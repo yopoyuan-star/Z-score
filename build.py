@@ -171,9 +171,9 @@ def main():
     yr = df[df.index > df.index[-1] - pd.DateOffset(years=1)]                       # 近一年(含最新一天)
     hi_px, hi_dt = yr["High"].max(), yr["High"].idxmax()
     dd = now["台股收盤價"] / hi_px - 1
-    levels = [f"-{p}% {hi_px * (1 - p / 100):,.0f}" for p in (10, 15, 20, 25, 30, 35, 40)]
-    cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"
-                  f"<small>下跌對應指數:{' ｜ '.join(levels[:4])}<br>{' ｜ '.join(levels[4:])}</small>"))
+    lv = [f"-{p}% <b>{hi_px * (1 - p / 100):,.0f}</b>" for p in (10, 15, 20, 25, 30, 35, 40)]
+    cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
+    cards.append(("距近一年高點下跌對應指數", "<small class=lv>" + "<br>".join(" ｜ ".join(lv[i:i + 2]) for i in range(0, 7, 2)) + "</small>"))
     cards_html = "".join(f"<div class=card><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
@@ -203,7 +203,7 @@ def main():
 @media(prefers-color-scheme:dark){{:root{{--bg:#14161a;--fg:#e6e6e6;--mut:#999;--card:#22262d;--line:#333;--hi:#4a2326;--pk:#5a2a3f;--gr:#1f3b2a}}}}
 body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 auto;padding:16px;background:var(--bg);color:var(--fg)}}
 .cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}}.card{{background:var(--card);border-radius:8px;padding:10px 12px}}
-.card span{{display:block;font-size:12px;color:var(--mut)}}.card b{{font-size:20px}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
+.card span{{display:block;font-size:12px;color:var(--mut)}}.card b{{font-size:20px}}.card small.lv{{line-height:1.45;margin-top:2px}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
