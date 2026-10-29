@@ -160,10 +160,9 @@ def main():
 
     z, lo, hi = now["Z-SCORE"], now["Z低檔"], now["Z高檔"]
     zread = "高於 Z高檔(偏熱)" if z > hi else "低於 Z低檔(偏冷)" if z < lo else "在 Z低檔~Z高檔之間"
-    cards = [("收盤", num(now["台股收盤價"])), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small>"),
-             ("Z低檔 / Z高檔", f"{lo:.2f} / {hi:.2f}"), ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
-             ("200日線 ±", f"{now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}<small>MA200 {num(now['200日均線'])}</small>"),
-             ("生命線 60×3%", now["生命線60*3%"] or "—"),
+    cards = [("收盤", num(now["台股收盤價"])), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
+             ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
+             ("200日線 ±", f"{now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}<small>MA200 {num(now['200日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
              ("5年 / 10年線乖離", f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}<small>歷史均值 5年 {pct(now['5-AVG'])}|10年 {pct(now['10-AVG'])}</small>")]
     buy9 = [c for c in XCOLS[:9] if now[c] == "BUY"]
@@ -175,9 +174,9 @@ def main():
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
-    # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、200日線、BUY 數、近一年最高價;第二排 生命線、季年線乖離、5/10年乖離、Z低檔/高檔、MAD;第三排 下跌對應指數
-    assert len(cards) == 12
-    cards = [cards[i] for i in (0, 1, 4, 8, 9, 5, 6, 7, 2, 3, 10, 11)]
+    # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、200日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
+    assert len(cards) == 10
+    cards = [cards[i] for i in (0, 1, 3, 6, 7, 4, 5, 8, 9, 2)]
     cards_html = "".join(f"<div class=card><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
