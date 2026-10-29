@@ -1,0 +1,26 @@
+name: Daily Z-SCORE update
+on:
+  schedule:
+    - cron: "0 6 * * 1-5"     # UTC 06:00 = 台北 14:00(週一至週五)
+    - cron: "30 8 * * 1-5"    # 備援:台北 16:30(證交所資料太晚出時補抓;沒有新資料就不會更新或提交)
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: python build.py
+        env:
+          RETRIES: "3"                                              # 14:00 當天資料還沒出時,每 3 分鐘重試,最多 3 次
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/taiex.csv docs/zscore.html docs/zscore_output.csv
+          git diff --cached --quiet || (git commit -m "daily update $(date -u +%F)" && git push)
