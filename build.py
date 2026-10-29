@@ -175,6 +175,9 @@ def main():
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
+    # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、200日線、BUY 數、近一年最高價;第二排 生命線、季年線乖離、5/10年乖離、Z低檔/高檔、MAD;第三排 下跌對應指數
+    assert len(cards) == 12
+    cards = [cards[i] for i in (0, 1, 4, 8, 9, 5, 6, 7, 2, 3, 10, 11)]
     cards_html = "".join(f"<div class=card><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
