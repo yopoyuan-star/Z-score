@@ -13,12 +13,29 @@ pct = lambda v: "" if pd.isna(v) else f"{v:+.1%}"
 num = lambda v, n=2: "" if pd.isna(v) else f"{v:,.{n}f}"
 
 
+def fmt(v):
+    return f"{v:,.0f}" if abs(v) >= 1000 else f"{v:.2f}"
+
+
+def today_marks(last):
+    """最新交易日的垂直虛線與「最新」標籤"""
+    x = last.to_pydatetime()
+    return dict(shapes=[dict(type="line", xref="x", yref="paper", x0=x, x1=x, y0=0, y1=1, line=dict(color="#888", width=1, dash="dot"))],
+                annotations=[dict(x=x, xref="x", y=1, yref="paper", text=f"最新 {last:%m-%d}", showarrow=False, yanchor="bottom", font=dict(size=11, color="#888"))])
+
+
 def chart(df, cols, title, h=400, first=False):
     f = go.Figure()
+    last = df.index[-1]
     for name, color, w, dash in cols:
         f.add_scatter(x=df.index, y=df[name], name=name, line=dict(color=color, width=w, dash=dash))
+    for name, color, w, dash in cols:                       # 最新一天:圓點 + 數值
+        v = df[name].iloc[-1]
+        if pd.notna(v):
+            f.add_scatter(x=[last], y=[v], name=name, mode="markers+text", text=[fmt(v)], textposition="middle left",
+                          marker=dict(color=color, size=7), textfont=dict(color=color, size=11), showlegend=False, hoverinfo="skip")
     f.update_layout(title=title, height=h, template="plotly_white", hovermode="x unified",
-                    margin=dict(l=50, r=20, t=50, b=30), legend=dict(orientation="h", y=-0.12))
+                    margin=dict(l=50, r=20, t=50, b=30), legend=dict(orientation="h", y=-0.12), **today_marks(last))
     return f.to_html(full_html=False, include_plotlyjs="cdn" if first else False)
 
 
@@ -74,7 +91,7 @@ def cell(c, r):
         v = v if isinstance(v, str) else ""
         return f"<td class='{'gold' if v == '黃金交叉' else 'dead' if v == '死亡交叉' else ''}'>{v}</td>"
     if c in TEXT:
-        return f"<td>{v if isinstance(v, str) else ''}</td>"
+        return f"<td{' class=xc' if c in XCOLS else ''}>{v if isinstance(v, str) else ''}</td>"
     if pd.isna(v):
         return "<td></td>"
     if c in MACOLS:
@@ -95,10 +112,38 @@ def zchart(m):
     f = go.Figure()
     f.add_scatter(x=m.index, y=m["台股收盤價"], name="台股收盤價", line=dict(color="#1f77b4", width=1.4))
     f.add_scatter(x=m.index, y=m["Z-SCORE"], name="Z-SCORE", yaxis="y2", line=dict(color="#c0392b", width=1.4))
+    last = m.index[-1]
+    f.add_scatter(x=[last], y=[m["台股收盤價"].iloc[-1]], name="台股收盤價", mode="markers+text", text=[fmt(m["台股收盤價"].iloc[-1])],
+                  textposition="middle left", marker=dict(color="#1f77b4", size=7), showlegend=False, hoverinfo="skip")
+    f.add_scatter(x=[last], y=[m["Z-SCORE"].iloc[-1]], name="Z-SCORE", yaxis="y2", mode="markers+text", text=[fmt(m["Z-SCORE"].iloc[-1])],
+                  textposition="top left", marker=dict(color="#c0392b", size=7), showlegend=False, hoverinfo="skip")
+    f.update_layout(**today_marks(last))
     f.update_layout(title="台股 Z-SCORE(全部歷史:左軸收盤價、右軸 Z-SCORE)", height=440, template="plotly_white", hovermode="x unified",
                     margin=dict(l=50, r=50, t=50, b=30), legend=dict(orientation="h", y=-0.12),
                     yaxis=dict(title="收盤價"), yaxis2=dict(title="Z-SCORE", overlaying="y", side="right", range=[-5, 5], showgrid=False))
     return f.to_html(full_html=False, include_plotlyjs=False)
+
+
+JS = """
+(function(){
+var tbl=document.getElementById('bigtbl'),rows=tbl.querySelectorAll('tr.r'),cx=tbl.querySelectorAll('.xc'),
+    btns=document.querySelectorAll('.ctl button[data-n]'),xt=document.getElementById('xt');
+function setRows(n){rows.forEach(function(t,i){t.style.display=i<n?'':'none'});
+  btns.forEach(function(b){b.classList.toggle('on',+b.dataset.n===n)});}
+function setX(show){cx.forEach(function(e){e.style.display=show?'':'none'});
+  xt.textContent=show?'隱藏':'顯示';xt.dataset.s=show?'1':'0';}
+btns.forEach(function(b){b.onclick=function(){setRows(+b.dataset.n)}});
+xt.onclick=function(){setX(xt.dataset.s!=='1')};
+var wide=window.innerWidth>=700;
+setRows(wide?200:60);setX(wide);
+})();
+"""
+CSS2 = """
+.ctl{margin:6px 0;font-size:13px}.ctl button{margin-left:6px;padding:3px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+.ctl button.on{background:#1f77b4;color:#fff;border-color:#1f77b4}
+.big{max-height:72vh;overflow:auto}.big th{position:sticky;top:0;z-index:2;background:var(--bg)}
+.big th:first-child{left:0;z-index:3}.big th.xh{background:#ffe3a3;color:#222}
+"""
 
 
 def main():
@@ -132,10 +177,10 @@ def main():
     cols = ["開盤價", "最高價", "最低價", "台股收盤價", "20日均線", "60日均線", "200日均線", "240日均線",
             "生命線60*3%", "BUY(200日)2%", "SELL(200日)1%", "季線乖離", "年線乖離", "5年線乖離%", "10年線乖離%",
             "Z-SCORE", "Z低檔", "Z高檔", "Z方向", "MAD ZSCORE"] + ZCOLS + XCOLS + ["週KD", "月KD"]
-    head = "".join(f"<th class='{'xh' if c in XCOLS else ''}'>{c.replace('台股', '')}</th>" for c in ["日期"] + cols)
+    head = "".join(f"<th class='{'xh xc' if c in XCOLS else ''}'>{c.replace('台股', '')}</th>" for c in ["日期"] + cols)
     body = ""
     for d, r in m.iloc[::-1].head(TABLE_DAYS).iterrows():
-        body += f"<tr><td>{d:%Y-%m-%d}</td>{''.join(cell(c, r) for c in cols)}</tr>"
+        body += f"<tr class=r><td>{d:%Y-%m-%d}</td>{''.join(cell(c, r) for c in cols)}</tr>"
 
     c1 = chart(m.tail(CHART_DAYS), [("台股收盤價", "#1f77b4", 1.5, None), ("20日均線", "#f0ad4e", 1, None), ("60日均線", "#8e44ad", 1, None),
                                    ("200日均線", "#d9534f", 1.4, None), ("240日均線", "#2e9e5b", 1.4, None)], "台股加權指數 與均線")
@@ -157,7 +202,7 @@ table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8p
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
 .status{{background:var(--card);padding:8px 12px;border-radius:6px;font-size:14px}}tr.buy td:nth-child(2){{color:#d9534f;font-weight:700}}
-tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}</style></head><body>
+tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}</style></head><body>
 <h1>480天 Z-SCORE 與日週月動態 KD</h1>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
@@ -166,7 +211,10 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <p class=n>動態:以最新一天為終點,週 K=5 個交易日、月 K=22 個交易日,KD 取 9 根;黃金交叉 = K&gt;D、死亡交叉 = K&lt;D。</p>
 {ma_html}
 {c1}{c5}{c6}{c4}{c2}{c3}
-<h2>最近 {TABLE_DAYS} 個交易日(Z-SCORE &gt; {ZHOT} 粉紅底、&lt; 0 紅字;當天 Z-SCORE 大於某天期 Z-SCORE → 該格粉紅底;收盤高於 20/60/200/240 日線 → 該均線格粉紅、低於 → 淡綠)</h2><div class=wrap><table><tr>{head}</tr>{body}</table></div>
+<h2>最近 {TABLE_DAYS} 個交易日(Z-SCORE &gt; {ZHOT} 粉紅底、&lt; 0 紅字;當天 Z-SCORE 大於某天期 Z-SCORE → 該格粉紅底;收盤高於 20/60/200/240 日線 → 該均線格粉紅、低於 → 淡綠)</h2>
+<div class=ctl>顯示列數:<button data-n=60>60</button><button data-n=120>120</button><button data-n=200>200</button>
+<span style="margin-left:14px">Z 交叉欄(5&gt;10 … 150&gt;180):</span><button id=xt>隱藏</button></div>
+<div class="wrap big"><table id=bigtbl><tr>{head}</tr>{body}</table></div><script>{JS}</script>
 <p class=n>本頁欄位對應 Excel「480天Z-SCORE -2.0」工作表。僅供研究參考,非投資建議。</p></body></html>"""
     os.makedirs("docs", exist_ok=True)
     with open(OUT_HTML, "w", encoding="utf-8") as f:
