@@ -108,8 +108,8 @@ def main():
         print("沒有新資料,不重建頁面")
         return
     m = model.zscore_model(df)
-    kd = model.kd_log(df, CSV_DAYS)
-    m = m.join(kd[["週KD", "月KD"]])
+    kd = model.kd_log(df, max(CSV_DAYS, CHART_DAYS))
+    m = m.join(kd)
     now = m.iloc[-1]
     k = model.kd_now(df)
 
@@ -121,6 +121,8 @@ def main():
              ("生命線 60×3%", now["生命線60*3%"] or "—"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
              ("5年 / 10年線乖離", f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}<small>歷史均值 5年 {pct(now['5-AVG'])}|10年 {pct(now['10-AVG'])}</small>")]
+    buy9 = [c for c in XCOLS[:9] if now[c] == "BUY"]
+    cards.append(("5>10 ~ 80>90天Z 的 BUY 數", f"{len(buy9)} / 9<small>{'、'.join(c.replace('天Z', '') for c in buy9) or '目前沒有 BUY'}|全部 12 欄:{sum(now[c] == 'BUY' for c in XCOLS)} 個</small>"))
     cards_html = "".join(f"<div class=card><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
@@ -140,6 +142,8 @@ def main():
     c2 = chart(m.tail(CHART_DAYS), [("Z-SCORE", "#1f77b4", 1.6, None), ("Z高檔", "#d9534f", 1, "dot"), ("Z低檔", "#2e9e5b", 1, "dot")], "480天 Z-SCORE 與動態高低檔")
     c3 = chart(m.tail(CHART_DAYS), [("MAD ZSCORE", "#1f77b4", 1.6, None), ("MAD 高檔", "#d9534f", 1, "dot"), ("MAD 低檔", "#2e9e5b", 1, "dot")], "MAD ZSCORE 與動態高低檔")
     c4 = zchart(m)
+    c5 = chart(m.tail(CHART_DAYS), [("週K", "#1f77b4", 1.5, None), ("週D", "#f0ad4e", 1.5, None), ("週K高檔", "#d9534f", 1, "dot"), ("週K低檔", "#2e9e5b", 1, "dot")], "動態週 KD(K、D 與 K 合理高低檔)", 360)
+    c6 = chart(m.tail(CHART_DAYS), [("月K", "#1f77b4", 1.5, None), ("月D", "#f0ad4e", 1.5, None), ("月K高檔", "#d9534f", 1, "dot"), ("月K低檔", "#2e9e5b", 1, "dot")], "動態月 KD(K、D 與 K 合理高低檔)", 360)
     ma_html, _ = ma_channel(m)
     stamp = datetime.now(TPE)
     page = f"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -161,13 +165,13 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <h2>日 / 週 / 月 動態 KD</h2><div class=wrap><table><tr><th>週期</th><th>K</th><th>D</th><th>K 合理低檔 ~ 高檔</th><th>位階</th><th>K 與 D</th></tr>{kd_rows}</table></div>
 <p class=n>動態:以最新一天為終點,週 K=5 個交易日、月 K=22 個交易日,KD 取 9 根;黃金交叉 = K&gt;D、死亡交叉 = K&lt;D。</p>
 {ma_html}
-{c1}{c4}{c2}{c3}
+{c1}{c5}{c6}{c4}{c2}{c3}
 <h2>最近 {TABLE_DAYS} 個交易日(Z-SCORE &gt; {ZHOT} 粉紅底、&lt; 0 紅字;當天 Z-SCORE 大於某天期 Z-SCORE → 該格粉紅底;收盤高於 20/60/200/240 日線 → 該均線格粉紅、低於 → 淡綠)</h2><div class=wrap><table><tr>{head}</tr>{body}</table></div>
 <p class=n>本頁欄位對應 Excel「480天Z-SCORE -2.0」工作表。僅供研究參考,非投資建議。</p></body></html>"""
     os.makedirs("docs", exist_ok=True)
     with open(OUT_HTML, "w", encoding="utf-8") as f:
         f.write(page)
-    m.tail(CSV_DAYS).join(kd[["週K", "週D", "月K", "月D"]]).to_csv(OUT_CSV, encoding="utf-8-sig", float_format="%.4f")
+    m.tail(CSV_DAYS).to_csv(OUT_CSV, encoding="utf-8-sig", float_format="%.4f")
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
 

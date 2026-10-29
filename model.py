@@ -50,8 +50,8 @@ def kd_log(df, days):
     for i in range(len(df) - days, len(df)):
         w = dynamic_kd(df, W_BAR, W_WINDOW, i + 1, "週")
         m = dynamic_kd(df, M_BAR, None, i + 1, "月")
-        rows.append((df.index[i], w["K"], w["D"], w["state"], m["K"], m["D"], m["state"]))
-    return pd.DataFrame(rows, columns=["Date", "週K", "週D", "週KD", "月K", "月D", "月KD"]).set_index("Date")
+        rows.append((df.index[i], w["K"], w["D"], w["state"], w["low"], w["high"], m["K"], m["D"], m["state"], m["low"], m["high"]))
+    return pd.DataFrame(rows, columns=["Date", "週K", "週D", "週KD", "週K低檔", "週K高檔", "月K", "月D", "月KD", "月K低檔", "月K高檔"]).set_index("Date")
 
 
 def zscore_model(df):
