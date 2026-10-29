@@ -168,6 +168,12 @@ def main():
              ("5年 / 10年線乖離", f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}<small>歷史均值 5年 {pct(now['5-AVG'])}|10年 {pct(now['10-AVG'])}</small>")]
     buy9 = [c for c in XCOLS[:9] if now[c] == "BUY"]
     cards.append(("5>10 ~ 80>90天Z 的 BUY 數", f"{len(buy9)} / 9<small>{'、'.join(c.replace('天Z', '') for c in buy9) or '目前沒有 BUY'}|全部 12 欄:{sum(now[c] == 'BUY' for c in XCOLS)} 個</small>"))
+    yr = df[df.index > df.index[-1] - pd.DateOffset(years=1)]                       # 近一年(含最新一天)
+    hi_px, hi_dt = yr["High"].max(), yr["High"].idxmax()
+    dd = now["台股收盤價"] / hi_px - 1
+    levels = [f"-{p}% {hi_px * (1 - p / 100):,.0f}" for p in (10, 15, 20, 25, 30, 35, 40)]
+    cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"
+                  f"<small>下跌對應指數:{' ｜ '.join(levels[:4])}<br>{' ｜ '.join(levels[4:])}</small>"))
     cards_html = "".join(f"<div class=card><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
