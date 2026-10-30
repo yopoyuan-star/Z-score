@@ -68,6 +68,8 @@ def send(text):
 
 
 def run(m):
+    if os.environ.get("NOTIFY_TEST") == "1":          # 手動測試:不管有沒有訊號都發一則測試訊息
+        print("測試通知已發送:", send("【測試】加權指數 MA200 通知設定成功,收到這則代表 LINE 通道正常。") or "(未設定任何通道)")
     sig, text = check(m)
     if not sig:
         print("MA200 通知:今天不是第 3 天,不發送")
