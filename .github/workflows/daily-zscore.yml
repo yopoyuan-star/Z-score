@@ -4,6 +4,11 @@ on:
     - cron: "0 6 * * 1-5"     # UTC 06:00 = 台北 14:00(週一至週五)
     - cron: "30 8 * * 1-5"    # 備援:台北 16:30
   workflow_dispatch:
+    inputs:
+      test_notify:
+        description: "發一則 LINE 測試訊息"
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -18,6 +23,9 @@ jobs:
         env:
           RETRIES: "3"
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+          NOTIFY_TEST: ${{ github.event.inputs.test_notify == 'true' && '1' || '0' }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
