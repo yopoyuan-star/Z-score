@@ -179,7 +179,13 @@ def main():
 
     z, lo, hi = now["Z-SCORE"], now["Z低檔"], now["Z高檔"]
     zread = "高於 Z高檔(偏熱)" if z > hi else "低於 Z低檔(偏冷)" if z < lo else "在 Z低檔~Z高檔之間"
-    cards = [("收盤", num(now["台股收盤價"])), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
+    prev = m["台股收盤價"].iloc[-2]
+    chg = now["台股收盤價"] - prev
+    chg_pct = chg / prev
+    chg_col = "#d9534f" if chg > 0 else "#2e9e5b" if chg < 0 else "inherit"        # 台股慣例:漲紅、跌綠
+    arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
+    chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
+    cards = [("收盤", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
              ("200日線 ±", f"{now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}<small>MA200 {num(now['200日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
@@ -257,7 +263,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
     kdl = "\n".join(f"{n}KD  K {v['K']:.1f}|D {v['D']:.1f}|{v['state']}\n    合理低~高檔 {v['low']:.1f}~{v['high']:.1f}|{v['zone'] or '—'}"
                     for n, v in k.items())
     summary = (f"📊 加權指數日報 {m.index[-1]:%Y-%m-%d}\n"
-               f"收盤 {now['台股收盤價']:,.2f}\n"
+               f"收盤 {now['台股收盤價']:,.2f}  {arrow} {abs(chg):,.2f}({chg_pct:+.2%})\n"
                f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
                f"200日線 {now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}|MA200 {num(now['200日均線'])}\n"
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
