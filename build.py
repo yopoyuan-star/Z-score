@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import model
 from fetch_twse import update_data, TPE
 
+PAGE_URL = "https://yopoyuan-star.github.io/Z-score/zscore.html"
 CSV, OUT_HTML, OUT_CSV = "data/taiex.csv", "docs/zscore.html", "docs/zscore_output.csv"
 TABLE_DAYS, CHART_DAYS, CSV_DAYS = 200, 750, 300
 pct = lambda v: "" if pd.isna(v) else f"{v:+.1%}"
@@ -230,7 +231,20 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
         f.write(page)
     m.tail(CSV_DAYS).to_csv(OUT_CSV, encoding="utf-8-sig", float_format="%.4f")
     import notify
-    notify.run(m)                                   # 連續第 3 天 >MA200×1.02 或 <MA200×0.99 才發
+    kdl = "\n".join(f"{n}KD  K {v['K']:.1f}|D {v['D']:.1f}|{v['state']}\n    合理低~高檔 {v['low']:.1f}~{v['high']:.1f}|{v['zone'] or '—'}"
+                    for n, v in k.items())
+    summary = (f"📊 加權指數日報 {m.index[-1]:%Y-%m-%d}\n"
+               f"收盤 {now['台股收盤價']:,.2f}\n"
+               f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
+               f"200日線 {now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}|MA200 {num(now['200日均線'])}\n"
+               f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
+               f"BUY 數 {len(buy9)}/9|全部 12 欄 {sum(now[c] == 'BUY' for c in XCOLS)} 個\n"
+               f"近一年最高 {hi_px:,.2f}({hi_dt:%Y-%m-%d})|距高點 {dd:+.1%}\n"
+               f"季線 / 年線乖離 {pct(now['季線乖離'])} / {pct(now['年線乖離'])}\n"
+               f"5年 / 10年線乖離 {pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}\n"
+               f"MAD ZSCORE {now['MAD ZSCORE']:.2f}(低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f})\n"
+               f"{kdl}\n\n詳細頁面:{PAGE_URL}")
+    notify.run(m, summary)                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
 

@@ -67,12 +67,14 @@ def send(text):
     return sent
 
 
-def run(m):
+def run(m, summary=None):
+    """summary:每日日報文字;若今天剛好是連續第 3 天,警示訊息會放在日報最前面一起發(一天只發一則)。"""
     if os.environ.get("NOTIFY_TEST") == "1":          # 手動測試:不管有沒有訊號都發一則測試訊息
-        print("測試通知已發送:", send("【測試】加權指數 MA200 通知設定成功,收到這則代表 LINE 通道正常。") or "(未設定任何通道)")
+        print("測試通知已發送:", send("【測試】LINE 通道正常,收到這則代表設定成功。") or "(未設定任何通道)")
     sig, text = check(m)
-    if not sig:
-        print("MA200 通知:今天不是第 3 天,不發送")
+    if not (sig or summary):
+        print("今天沒有訊號也沒有日報,不發送")
         return
-    print(text)
-    print("已發送:", send(text) or "(未設定任何通道,僅印出)")
+    msg = (f"🔔🔔 {text}\n\n" if sig else "") + (summary or "")
+    print(msg)
+    print("已發送:", send(msg.strip()) or "(未設定任何通道,僅印出)")
