@@ -274,7 +274,16 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"MAD ZSCORE {now['MAD ZSCORE']:.2f}(低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f})\n"
                f"過熱轉弱警示 {sum(wok)}/5:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}\n"
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
-    notify.run(m, summary)                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
+    import flexmsg
+    fd = dict(date=f"{m.index[-1]:%Y-%m-%d}", close=now["台股收盤價"], chg=chg, chg_pct=chg_pct,
+              ma200_sig=now["BUY(200日)2%"] or now["SELL(200日)1%"] or "—", ma200=now["200日均線"], life=now["生命線60*3%"] or "—",
+              buy9=len(buy9), z=z, zread=zread, zlo=lo, zhi=hi, mad=now["MAD ZSCORE"], madlo=now["MAD 低檔"], madhi=now["MAD 高檔"],
+              q_y=f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}", y5_10=f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}",
+              hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd,
+              kd=[(f"{n}KD", v["K"], v["D"], v["state"], v["zone"], v["low"], v["high"]) for n, v in k.items()],
+              warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%"], wok)),
+              warn_n=sum(wok), url=PAGE_URL)
+    notify.run(m, summary, flexmsg.bubble(fd), flexmsg.alt_text(fd))                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
 

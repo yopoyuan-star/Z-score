@@ -43,7 +43,18 @@ def _post(url, data=None, headers=None, js=None):
     urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers or {}), timeout=30).read()
 
 
-def send(text):
+def _line(token, uid, text, flex):
+    def push(msg):
+        _post("https://api.line.me/v2/bot/message/push", headers={"Authorization": f"Bearer {token}"}, js={"to": uid, "messages": [msg]})
+    if flex:
+        try:
+            return push(flex)
+        except Exception as ex:                       # 卡片格式被 LINE 拒絕時,退回純文字,確保一定收得到
+            print(f"Flex 卡片發送失敗({ex}),改發純文字")
+    push({"type": "text", "text": text[:4900]})
+
+
+def send(text, flex=None):
     e, sent = os.environ.get, []
     chans = [
         ("簡訊(Twilio)", all(e(k) for k in ("TWILIO_SID", "TWILIO_TOKEN", "TWILIO_FROM", "SMS_TO")), lambda: _post(
@@ -53,9 +64,7 @@ def send(text):
         ("Telegram", all(e(k) for k in ("TG_TOKEN", "TG_CHAT_ID")), lambda: _post(
             f"https://api.telegram.org/bot{e('TG_TOKEN')}/sendMessage", {"chat_id": e("TG_CHAT_ID"), "text": text})),
         ("ntfy", bool(e("NTFY_TOPIC")), lambda: _post(f"https://ntfy.sh/{e('NTFY_TOPIC')}", text, {"Title": "MA200 signal"})),
-        ("LINE", all(e(k) for k in ("LINE_TOKEN", "LINE_USER_ID")), lambda: _post(
-            "https://api.line.me/v2/bot/message/push", headers={"Authorization": f"Bearer {e('LINE_TOKEN')}"},
-            js={"to": e("LINE_USER_ID"), "messages": [{"type": "text", "text": text}]})),
+        ("LINE", all(e(k) for k in ("LINE_TOKEN", "LINE_USER_ID")), lambda: _line(e("LINE_TOKEN"), e("LINE_USER_ID"), text, flex)),
     ]
     for name, ok, fn in chans:
         if ok:
@@ -67,14 +76,21 @@ def send(text):
     return sent
 
 
-def run(m, summary=None):
-    """summary:每日日報文字;若今天剛好是連續第 3 天,警示訊息會放在日報最前面一起發(一天只發一則)。"""
-    if os.environ.get("NOTIFY_TEST") == "1":          # 手動測試:不管有沒有訊號都發一則測試訊息
+def run(m, summary=None, flex=None, alt=None):
+    """summary:純文字日報(Telegram/ntfy/簡訊用);flex:LINE 卡片版 {bubble 內容};alt:LINE 通知預覽文字。
+    若今天剛好是連續第 3 天,警示放在最前面一起發(一天只發一則)。"""
+    if os.environ.get("NOTIFY_TEST") == "1":
         print("測試通知已發送:", send("【測試】LINE 通道正常,收到這則代表設定成功。") or "(未設定任何通道)")
     sig, text = check(m)
     if not (sig or summary):
         print("今天沒有訊號也沒有日報,不發送")
         return
     msg = (f"🔔🔔 {text}\n\n" if sig else "") + (summary or "")
+    fx = None
+    if flex:
+        if sig:                                     # 警示放最上面(紅底白字)
+            flex["body"]["contents"].insert(0, {"type": "box", "layout": "vertical", "backgroundColor": "#D9534F", "cornerRadius": "md",
+                "paddingAll": "md", "margin": "none", "contents": [{"type": "text", "text": "🔔 " + text.replace("\n", "\n"), "wrap": True, "color": "#FFFFFF", "size": "sm", "weight": "bold"}]})
+        fx = {"type": "flex", "altText": (("🔔" + sig + "訊號｜") if sig else "") + (alt or "加權指數日報"), "contents": flex}
     print(msg)
-    print("已發送:", send(msg.strip()) or "(未設定任何通道,僅印出)")
+    print("已發送:", send(msg.strip(), fx) or "(未設定任何通道,僅印出)")
