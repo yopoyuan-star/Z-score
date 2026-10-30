@@ -229,6 +229,8 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
     with open(OUT_HTML, "w", encoding="utf-8") as f:
         f.write(page)
     m.tail(CSV_DAYS).to_csv(OUT_CSV, encoding="utf-8-sig", float_format="%.4f")
+    import notify
+    notify.run(m)                                   # 連續第 3 天 >MA200×1.02 或 <MA200×0.99 才發
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
 
