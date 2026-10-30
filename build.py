@@ -47,6 +47,24 @@ def streak(flag):
     return flag.groupby((~flag).cumsum()).cumsum()
 
 
+def warn_state(m):
+    """過熱轉弱警示:自「Z 最近一次由負翻正」起算一段,四條件同時成立 = 4/4。
+    1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉。"""
+    z = m["Z-SCORE"]
+    cnt = sum((m[x] == "BUY").astype(int) for x in XCOLS[:9])
+    up = (z > 0) & (z.shift() <= 0)
+    ep = up.cumsum().where(z > 0)                                   # Z<=0 期間不屬於任何一段
+    seg = lambda f: f.astype(int).groupby(ep).cummax().astype(bool) & ep.notna()
+    c = [seg(z > 1.5), seg(cnt == 9), cnt <= 3, (m["週KD"] == "死亡交叉") & (m["月KD"] == "死亡交叉")]
+    allok = c[0] & c[1] & c[2] & c[3] & ep.notna()
+    now_ok = [bool(x.iloc[-1]) for x in c]
+    first = None
+    if ep.notna().iloc[-1] and allok.any():
+        cur = allok & (ep == ep.iloc[-1])
+        first = cur[cur].index[0] if cur.any() else None            # 本段第一次四條件成立的日期
+    return now_ok, first, ep[ep == ep.iloc[-1]].index[0] if ep.notna().iloc[-1] else None
+
+
 def ma_channel(m):
     d = pd.DataFrame({"close": m["台股收盤價"], "ma": m["200日均線"]})
     d["up"], d["dn"] = d.ma * (1 + UP_BAND), d.ma * (1 - DN_BAND)
@@ -172,12 +190,17 @@ def main():
     hi_px, hi_dt = yr["High"].max(), yr["High"].idxmax()
     dd = now["台股收盤價"] / hi_px - 1
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
+    wok, wfirst, wstart = warn_state(m)
+    mk = lambda ok: "✔" if ok else "✖"
+    wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉")
+    wnote = (f"本段自 {wstart:%Y-%m-%d} Z 翻正" if wstart is not None else "Z 目前在 0 以下") + (f"|首次 4/4:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
+    cards.append(("過熱轉弱警示", f"{sum(wok)} / 4{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
     # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、200日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
-    assert len(cards) == 10
-    cards = [cards[i] for i in (0, 1, 3, 6, 7, 4, 5, 8, 9, 2)]
+    assert len(cards) == 11
+    cards = [cards[i] for i in (0, 1, 3, 6, 8, 4, 5, 9, 10, 2, 7)]
     cards_html = "".join(f"<div class=card><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
@@ -243,6 +266,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"季線 / 年線乖離 {pct(now['季線乖離'])} / {pct(now['年線乖離'])}\n"
                f"5年 / 10年線乖離 {pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}\n"
                f"MAD ZSCORE {now['MAD ZSCORE']:.2f}(低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f})\n"
+               f"過熱轉弱警示 {sum(wok)}/4:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}\n"
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     notify.run(m, summary)                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
