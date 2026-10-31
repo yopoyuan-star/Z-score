@@ -48,15 +48,16 @@ def streak(flag):
 
 
 def warn_state(m):
-    """過熱轉弱警示:自「Z 最近一次由負翻正」起算一段,五條件同時成立 = 5/5。
-    1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉;5 本段 5 年線乖離率曾 >15%。"""
+    """過熱轉弱警示:自「Z 最近一次由負翻正」起算一段,六條件同時成立 = 6/6。
+    1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉;5 本段 5 年線乖離率曾 >15%;6 本段 90>120、120>150、150>180 三欄曾同時全 BUY。"""
     z = m["Z-SCORE"]
     cnt = sum((m[x] == "BUY").astype(int) for x in XCOLS[:9])
     up = (z > 0) & (z.shift() <= 0)
     ep = up.cumsum().where(z > 0)                                   # Z<=0 期間不屬於任何一段
     seg = lambda f: f.astype(int).groupby(ep).cummax().astype(bool) & ep.notna()
-    c = [seg(z > 1.5), seg(cnt == 9), cnt <= 3, (m["週KD"] == "死亡交叉") & (m["月KD"] == "死亡交叉"), seg(m["5年線乖離%"] > 0.15)]
-    allok = c[0] & c[1] & c[2] & c[3] & c[4] & ep.notna()
+    c = [seg(z > 1.5), seg(cnt == 9), cnt <= 3, (m["週KD"] == "死亡交叉") & (m["月KD"] == "死亡交叉"), seg(m["5年線乖離%"] > 0.15),
+         seg((m[XCOLS[9]] == "BUY") & (m[XCOLS[10]] == "BUY") & (m[XCOLS[11]] == "BUY"))]
+    allok = c[0] & c[1] & c[2] & c[3] & c[4] & c[5] & ep.notna()
     now_ok = [bool(x.iloc[-1]) for x in c]
     first = None
     if ep.notna().iloc[-1] and allok.any():
@@ -198,9 +199,9 @@ def main():
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     wok, wfirst, wstart = warn_state(m)
     mk = lambda ok: "✔" if ok else "✖"
-    wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})")
-    wnote = (f"本段自 {wstart:%Y-%m-%d} Z 翻正" if wstart is not None else "Z 目前在 0 以下") + (f"|首次 5/5:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
-    cards.append(("過熱轉弱警示", f"{sum(wok)} / 5{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small>"))
+    wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})<br>{mk(wok[5])} 本段 90>120、120>150、150>180 曾同時全 BUY")
+    wnote = (f"本段自 {wstart:%Y-%m-%d} Z 翻正" if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
+    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
@@ -272,7 +273,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"季線 / 年線乖離 {pct(now['季線乖離'])} / {pct(now['年線乖離'])}\n"
                f"5年 / 10年線乖離 {pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}\n"
                f"MAD ZSCORE {now['MAD ZSCORE']:.2f}(低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f})\n"
-               f"過熱轉弱警示 {sum(wok)}/5:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}\n"
+               f"過熱轉弱警示 {sum(wok)}/6:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}|90>120~150>180曾全BUY {mk(wok[5])}\n"
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
     fd = dict(date=f"{m.index[-1]:%Y-%m-%d}", close=now["台股收盤價"], chg=chg, chg_pct=chg_pct,
@@ -281,7 +282,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
               q_y=f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}", y5_10=f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}",
               hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd,
               kd=[(f"{n}KD", v["K"], v["D"], v["state"], v["zone"], v["low"], v["high"]) for n, v in k.items()],
-              warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%"], wok)),
+              warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%", "本段 90>120、120>150、150>180 曾同時全 BUY"], wok)),
               warn_n=sum(wok), url=PAGE_URL)
     notify.run(m, summary, flexmsg.bubble(fd), flexmsg.alt_text(fd))                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
