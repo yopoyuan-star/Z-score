@@ -47,6 +47,25 @@ def streak(flag):
     return flag.groupby((~flag).cumsum()).cumsum()
 
 
+def ma200_state(m):
+    """200 日線狀態:BUY=收盤>MA200×1.02、SELL=收盤<MA200×0.99(單日狀態);連續 3 天才是『訊號』。
+    回傳 (BUY/SELL/—, 連續天數, 說明, 今天是否剛好第 3 天)"""
+    c, ma = m["台股收盤價"], m["200日均線"]
+    ua, ub = streak(c > ma * (1 + UP_BAND)), streak(c < ma * (1 - DN_BAND))
+    for lab, st, word, sig in (("BUY", ua, f"站上 MA200+{UP_BAND:.0%}", "買進"), ("SELL", ub, f"跌破 MA200−{DN_BAND:.0%}", "賣出")):
+        n = int(st.iloc[-1])
+        if n > 0:
+            if n < DAYS:
+                note = f"已連續 {n} 天{word}|再 {DAYS - n} 天確認{sig}訊號"
+            elif n == DAYS:
+                note = f"已連續 {n} 天{word}|★今日{sig}訊號(第 {DAYS} 天)"
+            else:
+                d3 = st[st == DAYS].index[-1]
+                note = f"已連續 {n} 天{word}|{sig}訊號發出日 {d3:%Y-%m-%d}"
+            return lab, n, note, n == DAYS
+    return "—", 0, f"介於 MA200−{DN_BAND:.0%} ~ +{UP_BAND:.0%} 之間", False
+
+
 def warn_state(m):
     """過熱轉弱警示:自「Z 最近一次由負翻正」起算一段,六條件同時成立 = 6/6。
     1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉;5 本段 5 年線乖離率曾 >15%;6 本段 90>120、120>150、150>180 三欄曾同時全 BUY。"""
@@ -186,9 +205,10 @@ def main():
     chg_col = "#d9534f" if chg > 0 else "#2e9e5b" if chg < 0 else "inherit"        # 台股慣例:漲紅、跌綠
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
+    ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
     cards = [("收盤", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
-             ("200日線 ±", f"{now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}<small>MA200 {num(now['200日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
+             ("200日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA200 {num(now['200日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
              ("5年 / 10年線乖離", f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}<small>歷史均值 5年 {pct(now['5-AVG'])}|10年 {pct(now['10-AVG'])}</small>")]
     buy9 = [c for c in XCOLS[:9] if now[c] == "BUY"]
@@ -266,7 +286,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
     summary = (f"📊 加權指數日報 {m.index[-1]:%Y-%m-%d}\n"
                f"收盤 {now['台股收盤價']:,.2f}  {arrow} {abs(chg):,.2f}({chg_pct:+.2%})\n"
                f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
-               f"200日線 {now['BUY(200日)2%'] or now['SELL(200日)1%'] or '—'}|MA200 {num(now['200日均線'])}\n"
+               f"200日線 {ma_lab}|MA200 {num(now['200日均線'])}\n    {ma_note.replace('|', '|')}\n"
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
                f"BUY 數 {len(buy9)}/9|全部 12 欄 {sum(now[c] == 'BUY' for c in XCOLS)} 個\n"
                f"近一年最高 {hi_px:,.2f}({hi_dt:%Y-%m-%d})|距高點 {dd:+.1%}\n"
@@ -277,7 +297,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
     fd = dict(date=f"{m.index[-1]:%Y-%m-%d}", close=now["台股收盤價"], chg=chg, chg_pct=chg_pct,
-              ma200_sig=now["BUY(200日)2%"] or now["SELL(200日)1%"] or "—", ma200=now["200日均線"], life=now["生命線60*3%"] or "—",
+              ma200_sig=ma_lab, ma200_note=ma_note, ma200=now["200日均線"], life=now["生命線60*3%"] or "—",
               buy9=len(buy9), z=z, zread=zread, zlo=lo, zhi=hi, mad=now["MAD ZSCORE"], madlo=now["MAD 低檔"], madhi=now["MAD 高檔"],
               q_y=f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}", y5_10=f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}",
               hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd,
