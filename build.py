@@ -48,11 +48,11 @@ def streak(flag):
 
 
 def ma200_state(m):
-    """200 日線狀態:BUY=收盤>MA200×1.02、SELL=收盤<MA200×0.99(單日狀態);連續 3 天才是『訊號』。
+    """220 日線狀態:BUY=收盤>MA220×1.02、SELL=收盤<MA220×0.99(單日狀態);連續 3 天才是『訊號』。
     回傳 (BUY/SELL/—, 連續天數, 說明, 今天是否剛好第 3 天)"""
-    c, ma = m["台股收盤價"], m["200日均線"]
+    c, ma = m["台股收盤價"], m["220日均線"]
     ua, ub = streak(c > ma * (1 + UP_BAND)), streak(c < ma * (1 - DN_BAND))
-    for lab, st, word, sig in (("BUY", ua, f"站上 MA200+{UP_BAND:.0%}", "買進"), ("SELL", ub, f"跌破 MA200−{DN_BAND:.0%}", "賣出")):
+    for lab, st, word, sig in (("BUY", ua, f"站上 MA220+{UP_BAND:.0%}", "買進"), ("SELL", ub, f"跌破 MA220−{DN_BAND:.0%}", "賣出")):
         n = int(st.iloc[-1])
         if n > 0:
             if n < DAYS:
@@ -63,7 +63,7 @@ def ma200_state(m):
                 d3 = st[st == DAYS].index[-1]
                 note = f"已連續 {n} 天{word}|{sig}訊號發出日 {d3:%Y-%m-%d}"
             return lab, n, note, n == DAYS
-    return "—", 0, f"介於 MA200−{DN_BAND:.0%} ~ +{UP_BAND:.0%} 之間", False
+    return "—", 0, f"介於 MA220−{DN_BAND:.0%} ~ +{UP_BAND:.0%} 之間", False
 
 
 def warn_state(m):
@@ -86,41 +86,41 @@ def warn_state(m):
 
 
 def ma_channel(m):
-    d = pd.DataFrame({"close": m["台股收盤價"], "ma": m["200日均線"]})
+    d = pd.DataFrame({"close": m["台股收盤價"], "ma": m["220日均線"]})
     d["up"], d["dn"] = d.ma * (1 + UP_BAND), d.ma * (1 - DN_BAND)
     d["ua"], d["ub"] = streak(d.close > d.up), streak(d.close < d.dn)
     d["signal"] = ""
-    d.loc[d.ua == DAYS, "signal"] = "買進"      # 連續第 3 天站上 MA200+2%
-    d.loc[d.ub == DAYS, "signal"] = "賣出"      # 連續第 3 天跌破 MA200-1%
+    d.loc[d.ua == DAYS, "signal"] = "買進"      # 連續第 3 天站上 MA220+2%
+    d.loc[d.ub == DAYS, "signal"] = "賣出"      # 連續第 3 天跌破 MA220-1%
     d = d[d.index >= d.index[-1] - pd.DateOffset(years=YEARS)]
     last = d.iloc[-1]
     state = (f"已連續 {int(last.ua)} 天站上 MA+{UP_BAND:.0%}" if last.ua > 0 else
              f"已連續 {int(last.ub)} 天跌破 MA-{DN_BAND:.0%}" if last.ub > 0 else
              f"位於 MA-{DN_BAND:.0%} ~ MA+{UP_BAND:.0%} 通道內")
     f = go.Figure()
-    f.add_scatter(x=d.index, y=d.up, name=f"MA200+{UP_BAND:.0%}", line=dict(color="#d9534f", width=1, dash="dot"))
-    f.add_scatter(x=d.index, y=d.dn, name=f"MA200-{DN_BAND:.0%}", line=dict(color="#2e9e5b", width=1, dash="dot"),
+    f.add_scatter(x=d.index, y=d.up, name=f"MA220+{UP_BAND:.0%}", line=dict(color="#d9534f", width=1, dash="dot"))
+    f.add_scatter(x=d.index, y=d.dn, name=f"MA220-{DN_BAND:.0%}", line=dict(color="#2e9e5b", width=1, dash="dot"),
                   fill="tonexty", fillcolor="rgba(150,150,150,0.10)")
-    f.add_scatter(x=d.index, y=d.ma, name="MA200", line=dict(color="#f0ad4e", width=1.6))
+    f.add_scatter(x=d.index, y=d.ma, name="MA220", line=dict(color="#f0ad4e", width=1.6))
     f.add_scatter(x=d.index, y=d.close, name="收盤", line=dict(color="#1f77b4", width=1.6))
-    f.update_layout(title=f"台股加權指數 TAIEX(MA200 +{UP_BAND:.0%} / -{DN_BAND:.0%})", height=460, template="plotly_white",
+    f.update_layout(title=f"台股加權指數 TAIEX(MA220 +{UP_BAND:.0%} / -{DN_BAND:.0%})", height=460, template="plotly_white",
                     hovermode="x unified", margin=dict(l=50, r=20, t=50, b=30), legend=dict(orientation="h", y=-0.12))
     sigs = d[d.signal != ""].iloc[::-1]
     rows = "".join(f"<tr class='{'buy' if r.signal == '買進' else 'sell'}'><td>{i:%Y-%m-%d}</td><td>{r.signal}</td>"
                    f"<td>{r.close:,.2f}</td><td>{r.ma:,.2f}</td></tr>" for i, r in sigs.iterrows()) or "<tr><td colspan=4>近三年無訊號</td></tr>"
-    return f"""<h2>台股加權指數 MA200 通道與買賣訊號</h2>
-<div class=status>{d.index[-1]:%Y-%m-%d} 收盤 {last.close:,.2f}|MA200 {last.ma:,.2f}|乖離 {(last.close / last.ma - 1) * 100:+.2f}%|<b>{state}</b></div>
-<p class=n>規則:收盤連續 {DAYS} 天高於 MA200×{1 + UP_BAND:.2f} → 買進;連續 {DAYS} 天低於 MA200×{1 - DN_BAND:.2f} → 賣出(於第 {DAYS} 天觸發一次)。</p>
+    return f"""<h2>台股加權指數 MA220 通道與買賣訊號</h2>
+<div class=status>{d.index[-1]:%Y-%m-%d} 收盤 {last.close:,.2f}|MA220 {last.ma:,.2f}|乖離 {(last.close / last.ma - 1) * 100:+.2f}%|<b>{state}</b></div>
+<p class=n>規則:收盤連續 {DAYS} 天高於 MA220×{1 + UP_BAND:.2f} → 買進;連續 {DAYS} 天低於 MA220×{1 - DN_BAND:.2f} → 賣出(於第 {DAYS} 天觸發一次)。</p>
 {f.to_html(full_html=False, include_plotlyjs="cdn")}
-<details open><summary>買賣訊號(共 {len(sigs)} 筆,新到舊)</summary><div class=wrap><table><tr><th>日期</th><th>訊號</th><th>收盤</th><th>MA200</th></tr>{rows}</table></div></details>""", sigs
+<details open><summary>買賣訊號(共 {len(sigs)} 筆,新到舊)</summary><div class=wrap><table><tr><th>日期</th><th>訊號</th><th>收盤</th><th>MA220</th></tr>{rows}</table></div></details>""", sigs
 
 
 ZHOT = 1.5                                                      # Z-SCORE 高於此值 → 粉紅底
 WINS = [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 120, 150, 180]
 ZCOLS = [f"{w}天 Z-SCORE" for w in WINS]                        # Excel AH~AT
 XCOLS = [f"{a}>{b}天Z" for a, b in zip(WINS[:-1], WINS[1:])]    # Excel AU~BF
-MACOLS = {"20日均線", "60日均線", "200日均線", "240日均線"}      # 收盤>均線 粉紅底、<均線 淡綠底
-TEXT = {"生命線60*3%", "BUY(200日)2%", "SELL(200日)1%", "Z方向"} | set(XCOLS)
+MACOLS = {"20日均線", "60日均線", "220日均線", "240日均線"}      # 收盤>均線 粉紅底、<均線 淡綠底
+TEXT = {"生命線60*3%", "BUY(220日)2%", "SELL(220日)1%", "Z方向"} | set(XCOLS)
 PCT1 = {"5-AVG", "5-STD", "10-AVG", "10-STD"}
 
 
@@ -208,7 +208,7 @@ def main():
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
     cards = [("收盤", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
-             ("200日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA200 {num(now['200日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
+             ("220日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
              ("5年 / 10年線乖離", f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}<small>歷史均值 5年 {pct(now['5-AVG'])}|10年 {pct(now['10-AVG'])}</small>")]
     buy9 = [c for c in XCOLS[:9] if now[c] == "BUY"]
@@ -225,22 +225,22 @@ def main():
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
-    # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、200日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
+    # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、220日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
     assert len(cards) == 11
-    cards = [cards[i] for i in (0, 7, 3, 1, 6, 8, 4, 5, 9, 10, 2)]     # 第一排:收盤、過熱轉弱警示、200日線、Z-SCORE、BUY 數
+    cards = [cards[i] for i in (0, 7, 3, 1, 6, 8, 4, 5, 9, 10, 2)]     # 第一排:收盤、過熱轉弱警示、220日線、Z-SCORE、BUY 數
     import fx
     fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(放在最後一格);抓不到時顯示『暫無資料』
     cards.append(fx_card)
     wcls = "w3" if all(wok) else "w2" if sum(wok) >= 4 else "w1"                   # 警示卡底色:全中=紅、4~5 項=黃、其餘=綠
-    mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 200日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
-    cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a == '200日線 ±' else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
+    mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 220日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
+    cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a == '220日線 ±' else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
         f"<td class='{'hi' if v['zone'] == 'K值高檔' else 'lo' if v['zone'] == 'K值低檔' else ''}'>{v['zone'] or '—'}</td><td class='{'gold' if v['state'] == '黃金交叉' else 'dead' if v['state'] == '死亡交叉' else ''}'>{v['state']}</td></tr>"
         for n, v in k.items())
 
-    cols = ["開盤價", "最高價", "最低價", "台股收盤價", "20日均線", "60日均線", "200日均線", "240日均線",
-            "生命線60*3%", "BUY(200日)2%", "SELL(200日)1%", "季線乖離", "年線乖離", "5年線乖離%", "10年線乖離%",
+    cols = ["開盤價", "最高價", "最低價", "台股收盤價", "20日均線", "60日均線", "220日均線", "240日均線",
+            "生命線60*3%", "BUY(220日)2%", "SELL(220日)1%", "季線乖離", "年線乖離", "5年線乖離%", "10年線乖離%",
             "Z-SCORE", "Z低檔", "Z高檔", "Z方向", "MAD ZSCORE"] + ZCOLS + XCOLS + ["週KD", "月KD"]
     head = "".join(f"<th class='{'xh xc' if c in XCOLS else ''}'>{c.replace('台股', '')}</th>" for c in ["日期"] + cols)
     body = ""
@@ -248,7 +248,7 @@ def main():
         body += f"<tr class=r><td>{d:%Y-%m-%d}</td>{''.join(cell(c, r) for c in cols)}</tr>"
 
     c1 = chart(m.tail(CHART_DAYS), [("台股收盤價", "#1f77b4", 1.5, None), ("20日均線", "#f0ad4e", 1, None), ("60日均線", "#8e44ad", 1, None),
-                                   ("200日均線", "#d9534f", 1.4, None), ("240日均線", "#2e9e5b", 1.4, None)], "台股加權指數 與均線")
+                                   ("220日均線", "#d9534f", 1.4, None), ("240日均線", "#2e9e5b", 1.4, None)], "台股加權指數 與均線")
     c2 = chart(m.tail(CHART_DAYS), [("Z-SCORE", "#1f77b4", 1.6, None), ("Z高檔", "#d9534f", 1, "dot"), ("Z低檔", "#2e9e5b", 1, "dot")], "480天 Z-SCORE 與動態高低檔")
     c3 = chart(m.tail(CHART_DAYS), [("MAD ZSCORE", "#1f77b4", 1.6, None), ("MAD 高檔", "#d9534f", 1, "dot"), ("MAD 低檔", "#2e9e5b", 1, "dot")], "MAD ZSCORE 與動態高低檔")
     c4 = zchart(m)
@@ -273,7 +273,7 @@ p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dea
 tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}</style></head><body>
 <nav style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
 <span style="padding:7px 14px;border-radius:999px;background:#222;color:#fff;font-size:14px;font-weight:600">📈 Z-SCORE 與動態 KD</span>
-<a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
+<a href="https://yopoyuan-star.github.io/MA220-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a></nav>
 <h1>480天 Z-SCORE 與日週月動態 KD</h1>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
@@ -283,7 +283,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <p class=n>動態:以最新一天為終點,週 K=5 個交易日、月 K=22 個交易日,KD 取 9 根;黃金交叉 = K&gt;D、死亡交叉 = K&lt;D。</p>
 {ma_html}
 {c1}{c5}{c6}{c4}{c2}{c3}
-<h2>最近 {TABLE_DAYS} 個交易日(Z-SCORE &gt; {ZHOT} 粉紅底、&lt; 0 紅字;當天 Z-SCORE 大於某天期 Z-SCORE → 該格粉紅底;收盤高於 20/60/200/240 日線 → 該均線格粉紅、低於 → 淡綠)</h2>
+<h2>最近 {TABLE_DAYS} 個交易日(Z-SCORE &gt; {ZHOT} 粉紅底、&lt; 0 紅字;當天 Z-SCORE 大於某天期 Z-SCORE → 該格粉紅底;收盤高於 20/60/220/240 日線 → 該均線格粉紅、低於 → 淡綠)</h2>
 <div class=ctl>顯示列數:<button data-n=60>60</button><button data-n=120>120</button><button data-n=200>200</button>
 <span style="margin-left:14px">Z 交叉欄(5&gt;10 … 150&gt;180):</span><button id=xt>隱藏</button></div>
 <div class="wrap big"><table id=bigtbl><tr>{head}</tr>{body}</table></div><script>{JS}</script>
@@ -299,7 +299,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
     summary = (f"📊 加權指數日報 {m.index[-1]:%Y-%m-%d}\n"
                f"收盤 {now['台股收盤價']:,.2f}  {arrow} {abs(chg):,.2f}({chg_pct:+.2%})\n"
                f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
-               f"200日線 {ma_lab}|MA200 {num(now['200日均線'])}\n    {ma_note.replace('|', '|')}\n"
+               f"220日線 {ma_lab}|MA220 {num(now['220日均線'])}\n    {ma_note.replace('|', '|')}\n"
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
                f"BUY 數 {len(buy9)}/9|全部 12 欄 {sum(now[c] == 'BUY' for c in XCOLS)} 個\n"
                f"近一年最高 {hi_px:,.2f}({hi_dt:%Y-%m-%d})|距高點 {dd:+.1%}\n"
@@ -311,7 +311,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
     fd = dict(date=f"{m.index[-1]:%Y-%m-%d}", close=now["台股收盤價"], chg=chg, chg_pct=chg_pct,
-              ma200_sig=ma_lab, ma200_note=ma_note, ma200=now["200日均線"], life=now["生命線60*3%"] or "—",
+              ma200_sig=ma_lab, ma200_note=ma_note, ma200=now["220日均線"], life=now["生命線60*3%"] or "—",
               buy9=len(buy9), z=z, zread=zread, zlo=lo, zhi=hi, mad=now["MAD ZSCORE"], madlo=now["MAD 低檔"], madhi=now["MAD 高檔"],
               q_y=f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}", y5_10=f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}",
               hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd,

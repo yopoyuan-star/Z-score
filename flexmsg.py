@@ -41,8 +41,8 @@ def bubble(d):
         _t(f"{d['close']:,.2f}", size="3xl", weight="bold", color=DARK),
         _t(f"{arrow} {abs(d['chg']):,.2f}　({d['chg_pct']:+.2%})", size="md", weight="bold", color=chg_col),
         section("趨勢訊號", [
-            row("200日線", d["ma200_sig"], color=RED if d["ma200_sig"] == "BUY" else GREEN if d["ma200_sig"] == "SELL" else DARK, bold=True,
-                sub=f"{d['ma200_note']}\nMA200 {d['ma200']:,.2f}"),
+            row("220日線", d["ma200_sig"], color=RED if d["ma200_sig"] == "BUY" else GREEN if d["ma200_sig"] == "SELL" else DARK, bold=True,
+                sub=f"{d['ma200_note']}\nMA220 {d['ma200']:,.2f}"),
             row("生命線 60×3%", d["life"]),
             row("BUY 數(5>10~80>90)", f"{d['buy9']} / 9")]),
         section("Z-SCORE", [

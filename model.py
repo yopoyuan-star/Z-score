@@ -58,13 +58,13 @@ def zscore_model(df):
     c = df.Close
     out = pd.DataFrame(index=df.index)
     out["開盤價"], out["最高價"], out["最低價"], out["台股收盤價"] = df.Open, df.High, df.Low, c
-    for n in (20, 40, 60, 80, 200, 240):
+    for n in (20, 40, 60, 80, 220, 240):
         out[f"{n}日均線"] = c.rolling(n).mean()
-    ma60, ma200, ma240 = out["60日均線"], out["200日均線"], out["240日均線"]
+    ma60, ma200, ma240 = out["60日均線"], out["220日均線"], out["240日均線"]
     out["生命線60*3%"] = np.where(c > ma60 * 1.03, "多", np.where(c < ma60 * 0.97, "空", ""))
-    out["BUY(200日)2%"] = np.where(c > ma200 * 1.02, "BUY", "")
-    out["SELL(200日)1%"] = np.where(c < ma200 * 0.99, "SELL", "")
-    out["季線乖離"], out["年線乖離"] = (c - ma60) / ma60, (c - ma240) / ma240
+    out["BUY(220日)2%"] = np.where(c > ma200 * 1.02, "BUY", "")
+    out["SELL(220日)1%"] = np.where(c < ma200 * 0.99, "SELL", "")
+    out["季線乖離"], out["年線乖離"] = (c - ma60) / ma60, (c - ma200) / ma200
     m5 = c.rolling(1100).mean()
     out["5年線乖離%"] = (c - m5) / m5
     out["5-AVG"], out["5-STD"] = out["5年線乖離%"].rolling(660).mean(), out["5年線乖離%"].rolling(660).std()

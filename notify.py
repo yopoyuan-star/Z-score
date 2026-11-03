@@ -1,4 +1,4 @@
-"""MA200 通知:連續第 3 天 收盤 > MA200×1.02 → 買進;連續第 3 天 收盤 < MA200×0.99 → 賣出。只在「第 3 天」發一次。
+"""MA220 通知:連續第 3 天 收盤 > MA220×1.02 → 買進;連續第 3 天 收盤 < MA220×0.99 → 賣出。只在「第 3 天」發一次。
 通道由環境變數(GitHub Secrets)決定,設了哪個就發哪個,都沒設就只印出訊息:
   簡訊 Twilio : TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, SMS_TO(例 +886912345678)
   Telegram    : TG_TOKEN, TG_CHAT_ID
@@ -19,18 +19,18 @@ def _streak(flag):
 
 
 def check(m):
-    """回傳 (訊號, 訊息);沒有訊號則 (None, None)。m 需有「台股收盤價」「200日均線」欄。"""
-    c, ma = m["台股收盤價"], m["200日均線"]
+    """回傳 (訊號, 訊息);沒有訊號則 (None, None)。m 需有「台股收盤價」「220日均線」欄。"""
+    c, ma = m["台股收盤價"], m["220日均線"]
     ua, ub = _streak(c > ma * (1 + UP)), _streak(c < ma * (1 - DN))
     d, row = m.index[-1], m.iloc[-1]
     if ua.iloc[-1] == DAYS:
-        sig, rule = "買進", f"連續 {DAYS} 天站上 MA200×{1 + UP:.2f}"
+        sig, rule = "買進", f"連續 {DAYS} 天站上 MA220×{1 + UP:.2f}"
     elif ub.iloc[-1] == DAYS:
-        sig, rule = "賣出", f"連續 {DAYS} 天跌破 MA200×{1 - DN:.2f}"
+        sig, rule = "賣出", f"連續 {DAYS} 天跌破 MA220×{1 - DN:.2f}"
     else:
         return None, None
     return sig, (f"【加權指數{sig}訊號】{d:%Y-%m-%d}\n{rule}\n"
-                 f"收盤 {row['台股收盤價']:,.2f}|MA200 {row['200日均線']:,.2f}")
+                 f"收盤 {row['台股收盤價']:,.2f}|MA220 {row['220日均線']:,.2f}")
 
 
 def _post(url, data=None, headers=None, js=None):
@@ -63,7 +63,7 @@ def send(text, flex=None):
             {"Authorization": "Basic " + base64.b64encode(f"{e('TWILIO_SID')}:{e('TWILIO_TOKEN')}".encode()).decode()})),
         ("Telegram", all(e(k) for k in ("TG_TOKEN", "TG_CHAT_ID")), lambda: _post(
             f"https://api.telegram.org/bot{e('TG_TOKEN')}/sendMessage", {"chat_id": e("TG_CHAT_ID"), "text": text})),
-        ("ntfy", bool(e("NTFY_TOPIC")), lambda: _post(f"https://ntfy.sh/{e('NTFY_TOPIC')}", text, {"Title": "MA200 signal"})),
+        ("ntfy", bool(e("NTFY_TOPIC")), lambda: _post(f"https://ntfy.sh/{e('NTFY_TOPIC')}", text, {"Title": "MA220 signal"})),
         ("LINE", all(e(k) for k in ("LINE_TOKEN", "LINE_USER_ID")), lambda: _line(e("LINE_TOKEN"), e("LINE_USER_ID"), text, flex)),
     ]
     for name, ok, fn in chans:
