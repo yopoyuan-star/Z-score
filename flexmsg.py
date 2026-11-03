@@ -54,6 +54,14 @@ def bubble(d):
             row("5年 / 10年線乖離", d["y5_10"]),
             row("近一年最高", f"{d['hi_px']:,.2f}", sub=d["hi_dt"]),
             row("距高點", f"{d['dd']:+.1%}", color=RED if d["dd"] < 0 else DARK, bold=True)]),
+        *([section("美元兌台幣 USD/TWD", [
+            row("最新匯率", f"{d['fx']['last']:.3f}", bold=True,
+                color=RED if d["fx"]["chg"] > 0 else GREEN if d["fx"]["chg"] < 0 else DARK,
+                sub=f"{d['fx']['arrow']} {abs(d['fx']['chg']):.3f}({d['fx']['pct']:+.2%})  數字上升=台幣貶值"),
+            _t(d["fx"]["spark"], size="xs", align="center", weight="bold",
+               color=RED if d["fx"]["chg"] > 0 else GREEN if d["fx"]["chg"] < 0 else GRAY),
+            _t(f"近 {d['fx']['n']} 日 {d['fx']['d0']}~{d['fx']['d1']}｜高 {d['fx']['hi']:.3f}・低 {d['fx']['lo']:.3f}", size="xs", color=GRAY, align="center")])]
+          if d.get("fx") else []),
         section("動態 KD", [kd_row(*x) for x in d["kd"]]),
         section(f"過熱轉弱警示 {warn_n}/{len(d['warn'])}" + (" ⚠" if warn_all else ""),
                 [_t(f"{'✔' if ok else '✖'} {name}", size="sm", color=RED if ok else GRAY) for name, ok in d["warn"]]),
