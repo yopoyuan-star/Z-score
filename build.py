@@ -48,12 +48,13 @@ def streak(flag):
 
 
 JS2 = """
-(function(){var i=document.getElementById('cpx');if(!i)return;
+(function(){var i=document.getElementById('cpx'),c=document.getElementById('ccap');if(!i||!c)return;
 function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
-function u(){var v=parseFloat(i.value);for(var p=5;p<=60;p+=5){var e=document.getElementById('cx'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}
-try{localStorage.setItem('zs_cpx',i.value);}catch(x){}}
-try{var s=localStorage.getItem('zs_cpx');if(s)i.value=s;}catch(x){}
-i.addEventListener('input',u);u();})();
+function u(){var v=parseFloat(i.value),k=parseFloat(c.value);for(var p=5;p<=60;p+=5){var e=document.getElementById('cx'+p),q=document.getElementById('cs'+p);var px=(v>0)?v*(1-p/100):0;
+if(e)e.textContent=px>0?f(px):'—';if(q)q.textContent=(px>0&&k>0)?Math.floor(k/px).toLocaleString('en-US'):'—';}
+try{localStorage.setItem('zs_cpx',i.value);localStorage.setItem('zs_cap',c.value);}catch(x){}}
+try{var s=localStorage.getItem('zs_cpx');if(s)i.value=s;var t=localStorage.getItem('zs_cap');if(t)c.value=t;}catch(x){}
+i.addEventListener('input',u);c.addEventListener('input',u);u();})();
 """
 
 
@@ -241,10 +242,10 @@ def main():
     import fx
     fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(放在最後一格);抓不到時顯示『暫無資料』
     cards.append(fx_card)
-    calc_rows = "".join(f"<div class=lvr><span>-{p}%</span><i>→</i><em id=cx{p}>—</em></div>" for p in range(5, 45, 5))
-    cards.append(("跌幅對應價試算(輸入價格)", f"<input id=cpx type=number inputmode=decimal step=any value='{now['台股收盤價']:.2f}' aria-label='輸入價格'>{calc_rows}"))   # 輸入任何價格 → -5%…-40% 對應價
-    calc_rows2 = "".join(f"<div class=lvr><span>-{p}%</span><i>→</i><em id=cx{p}>—</em></div>" for p in range(45, 65, 5))
-    cards.append(("跌幅對應價(續,依左側輸入價格)", calc_rows2))
+    crow = lambda p: f"<div class=lvr2><span>-{p}%</span><em id=cx{p}>—</em><u id=cs{p}>—</u></div>"
+    chead = "<div class=lvr2 style='font-size:11px;color:var(--mut)'><span>跌幅</span><em>價格</em><u>可買股數</u></div>"
+    cards.append(("跌幅對應價與可買股數", f"<div class=cin><label>可用資金<input id=ccap type=number inputmode=decimal step=any placeholder='例:1000000' aria-label='可用資金'></label><label>股價<input id=cpx type=number inputmode=decimal step=any value='{now['台股收盤價']:.2f}' aria-label='股價'></label></div>{chead}{''.join(crow(p) for p in range(5, 45, 5))}"))
+    cards.append(("跌幅對應價與可買股數(續)", chead + "".join(crow(p) for p in range(45, 65, 5)) + "<small>股數 = 可用資金 ÷ 對應價(無條件捨去,不含手續費)</small>"))
     wcls = "w3" if all(wok) else "w2" if sum(wok) >= 4 else "w1"                   # 警示卡底色:全中=紅、4~5 項=黃、其餘=綠
     mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 220日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
     cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a == '220日線 ±' else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
@@ -279,7 +280,8 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .card.m_buy{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.m_sell{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}.card.m_mid{{background:#e8f0fb;box-shadow:inset 0 0 0 2px #9db9e3}}
 .card.w3{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.w2{{background:#fff4d6;box-shadow:inset 0 0 0 2px #e3bd52}}.card.w1{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}
 @media(prefers-color-scheme:dark){{.card.m_buy{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.m_sell{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}.card.m_mid{{background:#1f2f4a;box-shadow:inset 0 0 0 2px #4a6fa5}}.card.w3{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.w2{{background:#4a3d1c;box-shadow:inset 0 0 0 2px #a98a2e}}.card.w1{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}}}
-#cpx{{width:100%;box-sizing:border-box;font-size:18px;font-weight:700;padding:4px 8px;margin:4px 0 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
+.cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
+.lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
