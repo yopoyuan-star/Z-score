@@ -217,7 +217,7 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
-    cards = [("收盤", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
+    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
              ("220日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
