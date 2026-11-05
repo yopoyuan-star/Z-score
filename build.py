@@ -50,7 +50,7 @@ def streak(flag):
 JS2 = """
 (function(){var i=document.getElementById('cpx');if(!i)return;
 function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
-function u(){var v=parseFloat(i.value);for(var p=5;p<=40;p+=5){var e=document.getElementById('cx'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}
+function u(){var v=parseFloat(i.value);for(var p=5;p<=60;p+=5){var e=document.getElementById('cx'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}
 try{localStorage.setItem('zs_cpx',i.value);}catch(x){}}
 try{var s=localStorage.getItem('zs_cpx');if(s)i.value=s;}catch(x){}
 i.addEventListener('input',u);u();})();
@@ -243,6 +243,8 @@ def main():
     cards.append(fx_card)
     calc_rows = "".join(f"<div class=lvr><span>-{p}%</span><i>→</i><em id=cx{p}>—</em></div>" for p in range(5, 45, 5))
     cards.append(("跌幅對應價試算(輸入價格)", f"<input id=cpx type=number inputmode=decimal step=any value='{now['台股收盤價']:.2f}' aria-label='輸入價格'>{calc_rows}"))   # 輸入任何價格 → -5%…-40% 對應價
+    calc_rows2 = "".join(f"<div class=lvr><span>-{p}%</span><i>→</i><em id=cx{p}>—</em></div>" for p in range(45, 65, 5))
+    cards.append(("跌幅對應價(續,依左側輸入價格)", calc_rows2))
     wcls = "w3" if all(wok) else "w2" if sum(wok) >= 4 else "w1"                   # 警示卡底色:全中=紅、4~5 項=黃、其餘=綠
     mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 220日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
     cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a == '220日線 ±' else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
