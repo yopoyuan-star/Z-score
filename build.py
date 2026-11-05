@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import model
+import usma
 from fetch_twse import update_data, TPE
 
 PAGE_URL = "https://yopoyuan-star.github.io/Z-score/zscore.html"
@@ -246,6 +247,7 @@ def main():
     chead = "<div class=lvr2 style='font-size:11px;color:var(--mut)'><span>跌幅</span><em>價格</em><u>可買股數</u></div>"
     cards.append(("跌幅對應價與可買股數", f"<div class=cin><label>可用資金<input id=ccap type=number inputmode=decimal step=any placeholder='例:1000000' aria-label='可用資金'></label><label>股價<input id=cpx type=number inputmode=decimal step=any value='{now['台股收盤價']:.2f}' aria-label='股價'></label></div>{chead}{''.join(crow(p) for p in range(5, 45, 5))}"))
     cards.append(("跌幅對應價與可買股數(續)", chead + "".join(crow(p) for p in range(45, 65, 5)) + "<small>股數 = 可用資金 ÷ 對應價(無條件捨去,不含手續費)</small>"))
+    cards.append(usma.card())                              # 美股四大指數 MA 通道狀態(整合自 MA200-240 頁)
     wcls = "w3" if all(wok) else "w2" if sum(wok) >= 4 else "w1"                   # 警示卡底色:全中=紅、4~5 項=黃、其餘=綠
     mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 220日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
     cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a == '220日線 ±' else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
@@ -280,6 +282,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .card.m_buy{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.m_sell{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}.card.m_mid{{background:#e8f0fb;box-shadow:inset 0 0 0 2px #9db9e3}}
 .card.w3{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.w2{{background:#fff4d6;box-shadow:inset 0 0 0 2px #e3bd52}}.card.w1{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}
 @media(prefers-color-scheme:dark){{.card.m_buy{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.m_sell{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}.card.m_mid{{background:#1f2f4a;box-shadow:inset 0 0 0 2px #4a6fa5}}.card.w3{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.w2{{background:#4a3d1c;box-shadow:inset 0 0 0 2px #a98a2e}}.card.w1{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}}}
+.card .usr{{display:grid;grid-template-columns:1fr auto;column-gap:6px;margin:2px 0 6px;font-weight:400}}.card .usr b{{font-size:14px}}.card .usr em{{font-style:normal;font-weight:700;font-size:14px;text-align:right}}.card .usr small{{grid-column:1/3;font-size:11px;color:var(--mut);line-height:1.3}}
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
