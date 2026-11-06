@@ -49,7 +49,7 @@ def streak(flag):
     return flag.groupby((~flag).cumsum()).cumsum()
 
 
-JS2 = """
+JS2 = r"""
 (function(){var i=document.getElementById('cpx'),c=document.getElementById('ccap');if(!i||!c)return;
 function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
 function u(){var v=parseFloat(i.value),k=parseFloat(c.value);for(var p=5;p<=60;p+=5){var e=document.getElementById('cx'+p),q=document.getElementById('cs'+p);var px=(v>0)?v*(1-p/100):0;
@@ -57,12 +57,14 @@ if(e)e.textContent=px>0?f(px):'—';if(q)q.textContent=(px>0&&k>0)?Math.floor(k/
 try{localStorage.setItem('zs_cpx',i.value);localStorage.setItem('zs_cap',c.value);}catch(x){}}
 try{var s=localStorage.getItem('zs_cpx');if(s)i.value=s;var t=localStorage.getItem('zs_cap');if(t)c.value=t;}catch(x){}
 i.addEventListener('input',u);c.addEventListener('input',u);u();})();
-(function(){var y=document.getElementById('cpy');if(!y)return;
-function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
-function u(){var v=parseFloat(y.value);for(var p=2;p<=20;p+=2){var e=document.getElementById('cy'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}
-try{localStorage.setItem('zs_cpy',y.value);}catch(x){}}
-try{var s=localStorage.getItem('zs_cpy');if(s)y.value=s;}catch(x){}
-y.addEventListener('input',u);u();})();
+(function(){var box=document.getElementById('mgn');if(!box)return;var ta=document.getElementById('mpaste'),el=document.getElementById('mgnrows'),srv=box.getAttribute('data-last')||'';
+function p2(n){return (n<10?'0':'')+n;}
+function iso(d){return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());}
+function parse(t){var out={},now=new Date(),y=now.getFullYear();t.split(/\r?\n/).forEach(function(l){var c=l.trim().split(/[\s,]+/);var m=/^(?:(\d{4})[\/-])?(\d{1,2})[\/-](\d{1,2})$/.exec(c[0]||'');if(!m)return;var nums=[];for(var i=1;i<c.length;i++){var v=parseFloat(c[i].replace('%',''));if(v>=80&&v<=400)nums.push(v);}if(!nums.length)return;var yy=m[1]?+m[1]:y,d=new Date(yy,+m[2]-1,+m[3]);if(!m[1]&&d>now)d=new Date(yy-1,+m[2]-1,+m[3]);out[iso(d)]=[nums[0],nums.length>1?nums[1]:null];});return Object.keys(out).sort().map(function(k){return [k,out[k][0],out[k][1]];});}
+function cell(v,p){if(v===null||v===undefined)return '<em>—</em>';var col=v<130?'#d9534f':v<145?'#c98a00':'inherit',ch='';return "<em style='color:"+col+"'>"+v.toFixed(2)+"%"+ch+"</em>";}
+function render(r){r=r.slice(-5);var h="<div style='margin-top:10px;font-size:12px;color:var(--mut)'>融資維持率(財經M平方)・手動貼上</div><div class=lvr2 style='grid-template-columns:3em 1fr 1fr;font-size:11px;color:var(--mut)'><span>日期</span><em style='font-weight:400'>全市場擔保</em><em style='font-weight:400'>上市櫃融資</em></div>";for(var i=r.length-1;i>=0;i--){h+="<div class=lvr2 style='grid-template-columns:3em 1fr 1fr;font-size:12px'><span>"+r[i][0].slice(5).replace('-','/')+"</span>"+cell(r[i][1],i?r[i-1][1]:null)+cell(r[i][2],i?r[i-1][2]:null)+"</div>";}el.innerHTML=h;}
+try{var st=JSON.parse(localStorage.getItem('zs_mgn2')||'[]');if(st.length&&(!srv||st[st.length-1][0]>=srv))render(st);}catch(x){}
+ta.addEventListener('input',function(){var r=parse(ta.value);if(r.length>=1){render(r);try{localStorage.setItem('zs_mgn2',JSON.stringify(r));}catch(x){}}});})();
 """
 
 
