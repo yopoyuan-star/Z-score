@@ -56,6 +56,12 @@ if(e)e.textContent=px>0?f(px):'—';if(q)q.textContent=(px>0&&k>0)?Math.floor(k/
 try{localStorage.setItem('zs_cpx',i.value);localStorage.setItem('zs_cap',c.value);}catch(x){}}
 try{var s=localStorage.getItem('zs_cpx');if(s)i.value=s;var t=localStorage.getItem('zs_cap');if(t)c.value=t;}catch(x){}
 i.addEventListener('input',u);c.addEventListener('input',u);u();})();
+(function(){var y=document.getElementById('cpy');if(!y)return;
+function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function u(){var v=parseFloat(y.value);for(var p=1;p<=10;p++){var e=document.getElementById('cy'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}
+try{localStorage.setItem('zs_cpy',y.value);}catch(x){}}
+try{var s=localStorage.getItem('zs_cpy');if(s)y.value=s;}catch(x){}
+y.addEventListener('input',u);u();})();
 """
 
 
@@ -218,7 +224,7 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
-    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small>"),
+    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
              ("220日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
@@ -241,8 +247,10 @@ def main():
     assert len(cards) == 11
     cards = [cards[i] for i in (0, 7, 3, 1, 6, 8, 4, 5, 9, 10, 2)]     # 第一排:收盤、過熱轉弱警示、220日線、Z-SCORE、BUY 數
     import fx
+    cards = [c for c in cards if c[0] != "MAD ZSCORE"]            # MAD 已整合進 Z-SCORE 卡片
     fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(放在最後一格);抓不到時顯示『暫無資料』
     cards.append(fx_card)
+    cards.append(("跌 1~10% 對應價(輸入股價)", "<div class=cin><label>股價<input id=cpy type=number inputmode=decimal step=any value='" + f"{now['台股收盤價']:.2f}" + "' aria-label='股價'></label></div>" + "".join(f"<div class=lvr2 style='grid-template-columns:3em 1fr'><span>-{p}%</span><em id=cy{p}>—</em></div>" for p in range(1, 11))))
     crow = lambda p: f"<div class=lvr2><span>-{p}%</span><em id=cx{p}>—</em><u id=cs{p}>—</u></div>"
     chead = "<div class=lvr2 style='font-size:11px;color:var(--mut)'><span>跌幅</span><em>價格</em><u>可買股數</u></div>"
     cards.append(("跌幅對應價與可買股數", f"<div class=cin><label>可用資金<input id=ccap type=number inputmode=decimal step=any placeholder='例:1000000' aria-label='可用資金'></label><label>股價<input id=cpx type=number inputmode=decimal step=any value='{now['台股收盤價']:.2f}' aria-label='股價'></label></div>{chead}{''.join(crow(p) for p in range(5, 45, 5))}"))
