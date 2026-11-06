@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import model
 import usma
-import margin
+import fx
 from fetch_twse import update_data, TPE
 
 PAGE_URL = "https://yopoyuan-star.github.io/Z-score/zscore.html"
@@ -54,17 +54,20 @@ JS2 = r"""
 function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
 function u(){var v=parseFloat(i.value),k=parseFloat(c.value);for(var p=5;p<=60;p+=5){var e=document.getElementById('cx'+p),q=document.getElementById('cs'+p);var px=(v>0)?v*(1-p/100):0;
 if(e)e.textContent=px>0?f(px):'—';if(q)q.textContent=(px>0&&k>0)?Math.floor(k/px).toLocaleString('en-US'):'—';}
-try{localStorage.setItem('zs_cpx',i.value);localStorage.setItem('zs_cap',c.value);}catch(x){}}
+}
+function sv(){try{localStorage.setItem('zs_cpx',i.value);localStorage.setItem('zs_cap',c.value);}catch(x){}}
 try{var s=localStorage.getItem('zs_cpx');if(s)i.value=s;var t=localStorage.getItem('zs_cap');if(t)c.value=t;}catch(x){}
-i.addEventListener('input',u);c.addEventListener('input',u);u();})();
-(function(){var box=document.getElementById('mgn');if(!box)return;var ta=document.getElementById('mpaste'),el=document.getElementById('mgnrows'),srv=box.getAttribute('data-last')||'';
-function p2(n){return (n<10?'0':'')+n;}
-function iso(d){return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());}
-function parse(t){var out={},now=new Date(),y=now.getFullYear();t.split(/\r?\n/).forEach(function(l){var c=l.trim().split(/[\s,]+/);var m=/^(?:(\d{4})[\/-])?(\d{1,2})[\/-](\d{1,2})$/.exec(c[0]||'');if(!m)return;var nums=[];for(var i=1;i<c.length;i++){var v=parseFloat(c[i].replace('%',''));if(v>=80&&v<=400)nums.push(v);}if(!nums.length)return;var yy=m[1]?+m[1]:y,d=new Date(yy,+m[2]-1,+m[3]);if(!m[1]&&d>now)d=new Date(yy-1,+m[2]-1,+m[3]);out[iso(d)]=[nums[0],nums.length>1?nums[1]:null];});return Object.keys(out).sort().map(function(k){return [k,out[k][0],out[k][1]];});}
-function cell(v,p){if(v===null||v===undefined)return '<em>—</em>';var col=v<130?'#d9534f':v<145?'#c98a00':'inherit',ch='';return "<em style='color:"+col+"'>"+v.toFixed(2)+"%"+ch+"</em>";}
-function render(r){r=r.slice(-5);var h="<div style='margin-top:10px;font-size:12px;color:var(--mut)'>融資維持率(財經M平方)・手動貼上</div><div class=lvr2 style='grid-template-columns:3em 1fr 1fr;font-size:11px;color:var(--mut)'><span>日期</span><em style='font-weight:400'>全市場擔保</em><em style='font-weight:400'>上市櫃融資</em></div>";for(var i=r.length-1;i>=0;i--){h+="<div class=lvr2 style='grid-template-columns:3em 1fr 1fr;font-size:12px'><span>"+r[i][0].slice(5).replace('-','/')+"</span>"+cell(r[i][1],i?r[i-1][1]:null)+cell(r[i][2],i?r[i-1][2]:null)+"</div>";}el.innerHTML=h;}
-try{var st=JSON.parse(localStorage.getItem('zs_mgn2')||'[]');if(st.length&&(!srv||st[st.length-1][0]>=srv))render(st);}catch(x){}
-ta.addEventListener('input',function(){var r=parse(ta.value);if(r.length>=1){render(r);try{localStorage.setItem('zs_mgn2',JSON.stringify(r));}catch(x){}}});})();
+i.addEventListener('input',function(){u();sv();});c.addEventListener('input',function(){u();sv();});u();})();
+(function(){var y=document.getElementById('cpy');if(!y)return;
+function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function u(){var v=parseFloat(y.value);for(var p=2;p<=20;p+=2){var e=document.getElementById('cy'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}}
+try{var s=localStorage.getItem('zs_cpy');if(s)y.value=s;}catch(x){}
+y.addEventListener('input',function(){u();try{localStorage.setItem('zs_cpy',y.value);}catch(x){}});u();})();
+(function(){var h=document.getElementById('cph');if(!h)return;
+function f(v){var d=v>=1000?0:2;return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function u(){var v=parseFloat(h.value);for(var p=10;p<=80;p+=10){var e=document.getElementById('ch'+p);if(e)e.textContent=(v>0)?f(v*(1-p/100)):'—';}}
+try{var s=localStorage.getItem('zs_cph');if(s)h.value=s;}catch(x){}
+h.addEventListener('input',function(){u();try{localStorage.setItem('zs_cph',h.value);}catch(x){}});u();})();
 """
 
 
@@ -227,7 +230,10 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
-    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}{margin.html(*margin.get())}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
+    fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(整合進收盤卡片);抓不到時顯示『暫無資料』
+    fx_html = ("<div style='margin-top:10px;font-size:12px;color:var(--mut);font-weight:400'>美元兌台幣 USD/TWD</div>"
+               "<div style='font-size:18px;font-weight:700'>" + fx_card[1].replace("<small>數字上升 = 台幣貶值</small>", "") + "</div>")
+    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}{fx_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
              ("220日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
@@ -249,10 +255,8 @@ def main():
     # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、220日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
     assert len(cards) == 11
     cards = [cards[i] for i in (0, 7, 3, 1, 6, 8, 4, 5, 9, 10, 2)]     # 第一排:收盤、過熱轉弱警示、220日線、Z-SCORE、BUY 數
-    import fx
     cards = [c for c in cards if c[0] != "MAD ZSCORE"]            # MAD 已整合進 Z-SCORE 卡片
-    fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(放在最後一格);抓不到時顯示『暫無資料』
-    cards.append(fx_card)
+    cards.append(("最高價回檔對應價(輸入最高價)", "<div class=cin><label>最高價<input id=cph type=number inputmode=decimal step=any value='" + f"{hi_px:.2f}" + "' aria-label='最高價'></label></div>" + "".join(f"<div class=lvr2 style='grid-template-columns:3em 1fr'><span>-{p}%</span><em id=ch{p}>—</em></div>" for p in range(10, 90, 10))))
     cards.append(("跌 2~20% 對應價(輸入股價)", "<div class=cin><label>股價<input id=cpy type=number inputmode=decimal step=any value='" + f"{now['台股收盤價']:.2f}" + "' aria-label='股價'></label></div>" + "".join(f"<div class=lvr2 style='grid-template-columns:3em 1fr'><span>-{p}%</span><em id=cy{p}>—</em></div>" for p in range(2, 22, 2))))
     crow = lambda p: f"<div class=lvr2><span>-{p}%</span><em id=cx{p}>—</em><u id=cs{p}>—</u></div>"
     chead = "<div class=lvr2 style='font-size:11px;color:var(--mut)'><span>跌幅</span><em>價格</em><u>可買股數</u></div>"
