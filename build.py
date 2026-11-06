@@ -293,7 +293,11 @@ def main():
     cards.append(("跌幅對應價與可買股數(續)", chead + "".join(crow(p) for p in range(45, 65, 5)) + "<small>股數 = 可用資金 ÷ 對應價(無條件捨去,不含手續費)</small>"))
     wcls = "w3" if all(wok) else "w2" if sum(wok) >= 4 else "w1"                   # 警示卡底色:全中=紅、4~5 項=黃、其餘=綠
     mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 220日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
-    cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a.startswith('220日線') else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
+    _pal = ["#1565c0", "#0f9d8f", "#c2185b", "#e08a00", "#7b3fc9"]
+    cards_html = "".join(
+        f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a.startswith('220日線') else ''}'>"
+        f"<span class=ct style='color:{_pal[k % 5]};border-bottom-color:{_pal[k % 5]}'>{a}</span><b>{b}</b></div>"
+        for k, (a, b) in enumerate(cards))
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
         f"<td class='{'hi' if v['zone'] == 'K值高檔' else 'lo' if v['zone'] == 'K值低檔' else ''}'>{v['zone'] or '—'}</td><td class='{'gold' if v['state'] == '黃金交叉' else 'dead' if v['state'] == '死亡交叉' else ''}'>{v['state']}</td></tr>"
@@ -330,7 +334,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .card .zsec{{border-left:5px solid;padding:2px 0 3px 8px;margin:8px 0 6px;border-radius:2px}}.card .zlab{{display:block;font-style:normal;font-size:12px;font-weight:800}}.card .zbig{{display:block;font-style:normal;font-size:22px;font-weight:700;line-height:1.25}}
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
-.card span{{display:block;font-size:12px;color:var(--mut)}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
+.card span{{display:block;font-size:12px;color:var(--mut)}}.card>span.ct{{font-size:15px;font-weight:800;padding-bottom:4px;margin-bottom:6px;border-bottom:2px solid;line-height:1.3}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
