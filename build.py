@@ -255,6 +255,35 @@ def main():
     # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、220日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
     assert len(cards) == 11
     cards = [cards[i] for i in (0, 7, 3, 1, 6, 8, 4, 5, 9, 10, 2)]     # 第一排:收盤、過熱轉弱警示、220日線、Z-SCORE、BUY 數
+    # Z-SCORE 卡片整合三組數字(Z-SCORE / MAD ZSCORE / BUY 數),各用不同顏色與編號分區,避免看錯
+    def zsec(color, label, big, lines):
+        return (f"<div class=zsec style='border-left-color:{color}'><i class=zlab style='color:{color}'>{label}</i>"
+                f"<i class=zbig>{big}</i>{''.join(f'<small>{x}</small>' for x in lines)}</div>")
+    zhtml = (zsec("#1f6feb", "① Z-SCORE(480天)", f"{z:.2f}", [zread, f"Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}"])
+             + zsec("#8250df", "② MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}", [f"MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}"])
+             + zsec("#d97706", "③ BUY 數(5>10 ~ 80>90 共 9 欄)", f"{len(buy9)} / 9",
+                    ['、'.join(c.replace('天Z', '') for c in buy9) or '目前沒有 BUY', f"全部 12 欄:{sum(now[c] == 'BUY' for c in XCOLS)} 個"]))
+    zi = next(k for k, c in enumerate(cards) if c[0] == "Z-SCORE(480天)")
+    cards[zi] = ("Z-SCORE 區(①藍 ②紫 ③橘)", zhtml)
+    cards = [c for c in cards if not c[0].startswith("5>10 ~ 80>90天Z")]
+    # 220日線卡片整合四組數字(220日線訊號 / 近一年最高價 / 季年線乖離 / 5·10年線乖離),各用不同顏色與編號分區
+    def wrapsec(color, label, html):
+        return f"<div class=zsec style='border-left-color:{color}'><i class=zlab style='color:{color}'>{label}</i>{html}</div>"
+    byt = {c[0]: c[1] for c in cards}
+    ma_color = {"BUY": "#c62828", "SELL": "#2e7d32"}.get(ma_lab, "#1565c0")
+    mhtml = (wrapsec(ma_color, "① 220日線 訊號", byt["220日線 ±"])
+             + wrapsec("#0f9d8f", "② 近一年最高價", byt["近一年最高價"])
+             + wrapsec("#c2185b", "③ 季線 / 年線乖離", byt["季線 / 年線乖離"])
+             + wrapsec("#6d4c41", "④ 5年 / 10年線乖離", byt["5年 / 10年線乖離"]))
+    mi = next(k for k, c in enumerate(cards) if c[0] == "220日線 ±")
+    cards[mi] = ("220日線區(①~④ 分區顯示)", mhtml)
+    cards = [c for c in cards if c[0] not in ("近一年最高價", "季線 / 年線乖離", "5年 / 10年線乖離")]
+    # 距高點下跌 10~25% 與 30~40% 合併成一張(-10% ~ -40%)
+    _i1 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 10~25%"))
+    _i2 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 30~40%"))
+    cards[_i1] = ("距高點下跌 10~40% 對應指數", cards[_i1][1] + cards[_i2][1])
+    del cards[_i2]
+    cards.insert(4, usma.card())                           # 美股四大指數 MA 通道狀態:放第一排最右邊(原 BUY 數卡片的位置)
     cards = [c for c in cards if c[0] != "MAD ZSCORE"]            # MAD 已整合進 Z-SCORE 卡片
     cards.append(("最高價回檔對應價(輸入最高價)", "<div class=cin><label>最高價<input id=cph type=number inputmode=decimal step=any value='" + f"{hi_px:.2f}" + "' aria-label='最高價'></label></div>" + "".join(f"<div class=lvr2 style='grid-template-columns:3em 1fr'><span>-{p}%</span><em id=ch{p}>—</em></div>" for p in range(10, 90, 10))))
     cards.append(("跌 2~20% 對應價(輸入股價)", "<div class=cin><label>股價<input id=cpy type=number inputmode=decimal step=any value='" + f"{now['台股收盤價']:.2f}" + "' aria-label='股價'></label></div>" + "".join(f"<div class=lvr2 style='grid-template-columns:3em 1fr'><span>-{p}%</span><em id=cy{p}>—</em></div>" for p in range(2, 22, 2))))
@@ -262,10 +291,9 @@ def main():
     chead = "<div class=lvr2 style='font-size:11px;color:var(--mut)'><span>跌幅</span><em>價格</em><u>可買股數</u></div>"
     cards.append(("跌幅對應價與可買股數", f"<div class=cin><label>可用資金<input id=ccap type=number inputmode=decimal step=any placeholder='例:1000000' aria-label='可用資金'></label><label>股價<input id=cpx type=number inputmode=decimal step=any value='{now['台股收盤價']:.2f}' aria-label='股價'></label></div>{chead}{''.join(crow(p) for p in range(5, 45, 5))}"))
     cards.append(("跌幅對應價與可買股數(續)", chead + "".join(crow(p) for p in range(45, 65, 5)) + "<small>股數 = 可用資金 ÷ 對應價(無條件捨去,不含手續費)</small>"))
-    cards.append(usma.card())                              # 美股四大指數 MA 通道狀態(整合自 MA200-240 頁)
     wcls = "w3" if all(wok) else "w2" if sum(wok) >= 4 else "w1"                   # 警示卡底色:全中=紅、4~5 項=黃、其餘=綠
     mcls = {"BUY": "m_buy", "SELL": "m_sell"}.get(ma_lab, "m_mid")                  # 220日線底色:BUY=紅(台股慣例)、SELL=綠、其餘=藍灰
-    cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a == '220日線 ±' else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
+    cards_html = "".join(f"<div class='card{' ' + wcls if a == '過熱轉弱警示' else ' ' + mcls if a.startswith('220日線') else ''}'><span>{a}</span><b>{b}</b></div>" for a, b in cards)
     kd_rows = "".join(
         f"<tr><td>{n}KD</td><td>{v['K']:.1f}</td><td>{v['D']:.1f}</td><td>{v['low']:.1f} ~ {v['high']:.1f}</td>"
         f"<td class='{'hi' if v['zone'] == 'K值高檔' else 'lo' if v['zone'] == 'K值低檔' else ''}'>{v['zone'] or '—'}</td><td class='{'gold' if v['state'] == '黃金交叉' else 'dead' if v['state'] == '死亡交叉' else ''}'>{v['state']}</td></tr>"
@@ -299,6 +327,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 @media(prefers-color-scheme:dark){{.card.m_buy{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.m_sell{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}.card.m_mid{{background:#1f2f4a;box-shadow:inset 0 0 0 2px #4a6fa5}}.card.w3{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.w2{{background:#4a3d1c;box-shadow:inset 0 0 0 2px #a98a2e}}.card.w1{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}}}
 .card .usr{{display:grid;grid-template-columns:1fr auto;column-gap:6px;margin:2px 0 6px;font-weight:400}}.card .usr b{{font-size:14px}}.card .usr em{{font-style:normal;font-weight:700;font-size:14px;text-align:right}}.card .usr small{{grid-column:1/3;font-size:11px;color:var(--mut);line-height:1.3}}
 .card .ptip{{margin-top:8px;padding:6px 8px;border-radius:6px;background:#c1121f;color:#fff;font-size:13px;font-weight:800;line-height:1.4;border:2px solid #ffd60a}}.card .ptip.hot{{animation:ptipb 1.6s ease-in-out infinite}}@keyframes ptipb{{50%{{background:#ff6b00}}}}@media(prefers-reduced-motion:reduce){{.card .ptip.hot{{animation:none}}}}
+.card .zsec{{border-left:5px solid;padding:2px 0 3px 8px;margin:8px 0 6px;border-radius:2px}}.card .zlab{{display:block;font-style:normal;font-size:12px;font-weight:800}}.card .zbig{{display:block;font-style:normal;font-size:22px;font-weight:700;line-height:1.25}}
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
