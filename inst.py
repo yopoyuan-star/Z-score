@@ -46,19 +46,51 @@ def parse_twse(js):
     return str(js.get("date", "")), out
 
 
+TWSE_OPEN = "https://openapi.twse.com.tw/v1/exchangeReport/BFI82U"
+
+
+def parse_twse_open(rows):
+    """證交所 OpenAPI(固定回傳最新一日,民國日期 1151106)→ 同 parse_twse 的 (YYYYMMDD, dict)。"""
+    if not rows:
+        return None
+    data = []
+    date = ""
+    for r in rows:
+        date = date or str(r.get("Date", r.get("日期", "")))
+        name = r.get("Item", r.get("單位名稱", ""))
+        diff = r.get("Difference", r.get("買賣差額", ""))
+        data.append([name, "", "", diff])
+    if len(date) == 7:                                  # 民國 → 西元
+        date = str(int(date[:3]) + 1911) + date[3:]
+    return parse_twse({"stat": "OK", "date": date, "data": data})
+
+
 def fetch_twse(back=7):
     d = datetime.now(TPE)
+    best = None
+    want = None
     for i in range(back):
         day = d - timedelta(days=i)
         if day.weekday() >= 5:
             continue
+        want = want or f"{day:%Y%m%d}"
         try:
             got = parse_twse(_get(TWSE.format(d=f"{day:%Y%m%d}")))
             if got:
-                return got
+                print(f"三大法人(rwd) 要求 {day:%Y%m%d} → 回傳 {got[0]}")
+                best = got
+                break
         except Exception as e:
             print("三大法人抓取失敗:", e)
-    return None
+    if not best or best[0] < (want or ""):                # 舊於預期日 → 再試 OpenAPI,取較新的
+        try:
+            alt = parse_twse_open(_get(TWSE_OPEN))
+            print(f"三大法人(openapi) 回傳 {alt[0] if alt else None}")
+            if alt and (not best or alt[0] > best[0]):
+                best = alt
+        except Exception as e:
+            print("三大法人 OpenAPI 失敗:", e)
+    return best
 
 
 def _pick(row, *must, none=()):
