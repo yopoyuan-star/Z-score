@@ -1,8 +1,8 @@
 name: Daily Z-SCORE update
 on:
   schedule:
-    - cron: "0 6 * * 1-5"     # UTC 06:00 = 台北 14:00(週一至週五)
-    - cron: "30 8 * * 1-5"    # 備援:台北 16:30
+    - cron: "0 9 * * 1-5"     # UTC 09:00 = 台北 17:00(週一至週五,配合證交所三大法人公布時間)
+    - cron: "30 10 * * 1-5"   # 備援:台北 18:30
   workflow_dispatch:
     inputs:
       test_notify:
