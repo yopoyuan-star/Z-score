@@ -54,6 +54,17 @@ def bubble(d):
             row("5年 / 10年線乖離", d["y5_10"]),
             row("近一年最高", f"{d['hi_px']:,.2f}", sub=d["hi_dt"]),
             row("距高點", f"{d['dd']:+.1%}", color=RED if d["dd"] < 0 else DARK, bold=True)]),
+        *([section("三大法人買賣超(億元)", [
+            row(k, f"{d['inst']['tw'][1][k]:+,.1f}", bold=True,
+                color=RED if d["inst"]["tw"][1][k] > 0 else GREEN if d["inst"]["tw"][1][k] < 0 else DARK)
+            for k in ("外資", "投信", "自營商", "合計")] + [_t(f"資料日 {d['inst']['tw'][0][:4]}-{d['inst']['tw'][0][4:6]}-{d['inst']['tw'][0][6:8]}", size="xs", color=GRAY, align="end")])]
+          if d.get("inst") and d["inst"]["tw"] else []),
+        *([section("外資台指期未平倉", [
+            row("淨口數(多−空)", f"{d['inst']['fu'][1]:+,.0f} 口", bold=True,
+                color=RED if d["inst"]["fu"][1] > 0 else GREEN if d["inst"]["fu"][1] < 0 else DARK,
+                sub=(f"多 {d['inst']['fu'][2]:,.0f}｜空 {d['inst']['fu'][3]:,.0f}  " if d["inst"]["fu"][2] is not None and d["inst"]["fu"][3] is not None else "")
+                + f"資料日 {str(d['inst']['fu'][0])[:4]}-{str(d['inst']['fu'][0])[4:6]}-{str(d['inst']['fu'][0])[6:8]}")])]
+          if d.get("inst") and d["inst"]["fu"] else []),
         *([section("美元兌台幣 USD/TWD", [
             row("最新匯率", f"{d['fx']['last']:.3f}", bold=True,
                 color=RED if d["fx"]["chg"] > 0 else GREEN if d["fx"]["chg"] < 0 else DARK,

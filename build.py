@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import model
 import usma
 import fx
+import inst
 from fetch_twse import update_data, TPE
 
 PAGE_URL = "https://yopoyuan-star.github.io/Z-score/zscore.html"
@@ -230,10 +231,11 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
+    inst_data = inst.fetch()                              # 三大法人 + 外資期貨(網頁與 LINE 共用)
     fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(整合進收盤卡片);抓不到時顯示『暫無資料』
     fx_html = ("<div style='margin-top:10px;font-size:12px;color:var(--mut);font-weight:400'>美元兌台幣 USD/TWD</div>"
                "<div style='font-size:18px;font-weight:700'>" + fx_card[1].replace("<small>數字上升 = 台幣貶值</small>", "") + "</div>")
-    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}{fx_html}"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
+    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}{fx_html}<div style='margin-top:10px'>{inst.html(inst_data)}</div>"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
              ("220日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
@@ -363,6 +365,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
     m.tail(CSV_DAYS).to_csv(OUT_CSV, encoding="utf-8-sig", float_format="%.4f")
     import notify
     fxd = fx.summary(fx_rows)
+    insd = inst.summary(inst_data)
     kdl = "\n".join(f"{n}KD  K {v['K']:.1f}|D {v['D']:.1f}|{v['state']}\n    合理低~高檔 {v['low']:.1f}~{v['high']:.1f}|{v['zone'] or '—'}"
                     for n, v in k.items())
     summary = (f"📊 加權指數日報 {m.index[-1]:%Y-%m-%d}\n"
@@ -376,6 +379,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"5年 / 10年線乖離 {pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}\n"
                f"MAD ZSCORE {now['MAD ZSCORE']:.2f}(低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f})\n"
                f"{fxd['text'] if fxd else '美元兌台幣 暫無資料'}\n"
+               f"{insd['text'] if insd else '三大法人/外資期貨 暫無資料'}\n"
                f"過熱轉弱警示 {sum(wok)}/6:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}|90>120~150>180曾全BUY {mk(wok[5])}\n"
                f"⚠ 如果過熱須逐步轉換成中華電+金融股!!{'(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
@@ -387,7 +391,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
               hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd,
               kd=[(f"{n}KD", v["K"], v["D"], v["state"], v["zone"], v["low"], v["high"]) for n, v in k.items()],
               warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%", "本段 90>120、120>150、150>180 曾同時全 BUY"], wok)),
-              warn_n=sum(wok), url=PAGE_URL, fx=fxd)
+              warn_n=sum(wok), url=PAGE_URL, fx=fxd, inst=insd)
     notify.run(m, summary, flexmsg.bubble(fd), flexmsg.alt_text(fd))                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
