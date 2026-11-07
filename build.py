@@ -235,7 +235,7 @@ def main():
     fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(整合進收盤卡片);抓不到時顯示『暫無資料』
     fx_html = ("<div style='margin-top:10px;font-size:12px;color:var(--mut);font-weight:400'>美元兌台幣 USD/TWD</div>"
                "<div style='font-size:18px;font-weight:700'>" + fx_card[1].replace("<small>數字上升 = 台幣貶值</small>", "") + "</div>")
-    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}{fx_html}<div style='margin-top:10px'>{inst.html(inst_data)}</div>"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
+    cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}<div style='margin-top:10px'>{inst.html(inst_data)}</div>"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
              ("220日線 ±", f"{ma_lab}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
@@ -280,6 +280,9 @@ def main():
     mi = next(k for k, c in enumerate(cards) if c[0] == "220日線 ±")
     cards[mi] = ("220日線區(①~④ 分區顯示)", mhtml)
     cards = [c for c in cards if c[0] not in ("近一年最高價", "季線 / 年線乖離", "5年 / 10年線乖離")]
+    # 美元兌台幣(含小走勢圖)移到「過熱轉弱警示」卡片下方,讓收盤卡片不要太長
+    _w = next(k for k, c in enumerate(cards) if c[0] == "過熱轉弱警示")
+    cards[_w] = (cards[_w][0], cards[_w][1] + "<div style='margin-top:10px;border-top:1px solid var(--line);padding-top:2px'>" + fx_html + "</div>")
     # 距高點下跌 10~25% 與 30~40% 合併成一張(-10% ~ -40%)
     _i1 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 10~25%"))
     _i2 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 30~40%"))

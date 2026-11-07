@@ -65,6 +65,11 @@ def bubble(d):
                 sub=(f"多 {d['inst']['fu'][2]:,.0f}｜空 {d['inst']['fu'][3]:,.0f}  " if d["inst"]["fu"][2] is not None and d["inst"]["fu"][3] is not None else "")
                 + f"資料日 {str(d['inst']['fu'][0])[:4]}-{str(d['inst']['fu'][0])[4:6]}-{str(d['inst']['fu'][0])[6:8]}")])]
           if d.get("inst") and d["inst"]["fu"] else []),
+        *([section("散戶多空比(小台)", [
+            row("多空比", f"{d['inst']['rt'][1]:+.1f}%", bold=True,
+                color=RED if d["inst"]["rt"][1] > 0 else GREEN if d["inst"]["rt"][1] < 0 else DARK,
+                sub=f"散戶淨 {d['inst']['rt'][2]:+,.0f} 口｜全市場 {d['inst']['rt'][3]:,.0f} 口  資料日 {str(d['inst']['rt'][0])[:4]}-{str(d['inst']['rt'][0])[4:6]}-{str(d['inst']['rt'][0])[6:8]}")])]
+          if d.get("inst") and d["inst"].get("rt") else []),
         *([section("美元兌台幣 USD/TWD", [
             row("最新匯率", f"{d['fx']['last']:.3f}", bold=True,
                 color=RED if d["fx"]["chg"] > 0 else GREEN if d["fx"]["chg"] < 0 else DARK,
