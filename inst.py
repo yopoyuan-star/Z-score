@@ -8,6 +8,7 @@ TPE = timezone(timedelta(hours=8))
 UP, DOWN = "#d9534f", "#2e9e5b"                       # 台股慣例:買超/多方紅、賣超/空方綠
 UA = {"User-Agent": "Mozilla/5.0"}
 TWSE = "https://www.twse.com.tw/rwd/zh/fund/BFI82U?type=day&dayDate={d}&response=json"
+TWSE_OLD = "https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={d}&type=day"
 TAIFEX_OI = "https://openapi.taifex.com.tw/v1/DailyMarketReportFut"
 TAIFEX = "https://openapi.taifex.com.tw/v1/MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate"
 
@@ -74,14 +75,18 @@ def fetch_twse(back=7):
         if day.weekday() >= 5:
             continue
         want = want or f"{day:%Y%m%d}"
-        try:
-            got = parse_twse(_get(TWSE.format(d=f"{day:%Y%m%d}")))
-            if got:
-                print(f"三大法人(rwd) 要求 {day:%Y%m%d} → 回傳 {got[0]}")
-                best = got
-                break
-        except Exception as e:
-            print("三大法人抓取失敗:", e)
+        for u in (TWSE, TWSE_OLD):
+            try:
+                js = _get(u.format(d=f"{day:%Y%m%d}"))
+                got = parse_twse(js)
+                print(f"三大法人 {'新' if u == TWSE else '舊'}API 要求 {day:%Y%m%d} → stat={js.get('stat')} date={js.get('date')}")
+                if got:
+                    best = got
+                    break
+            except Exception as e:
+                print("三大法人抓取失敗:", e)
+        if best:
+            break
     if not best or best[0] < (want or ""):                # 舊於預期日 → 再試 OpenAPI,取較新的
         try:
             alt = parse_twse_open(_get(TWSE_OPEN))
