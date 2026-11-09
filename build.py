@@ -1,5 +1,6 @@
 """每日更新:證交所開高低收 → 480天Z-SCORE 模型 + 日/週/月動態 KD → docs/zscore.html、docs/zscore_output.csv"""
 import os
+import re
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -290,9 +291,15 @@ def main():
     _w = next(k for k, c in enumerate(cards) if c[0] == "過熱轉弱警示")
     # 已收完月 K(日曆月,當月未過完不算):放在警示紅框下方、美元兌台幣上方
     _mc_col = "#d9534f" if mc["state"] == "黃金交叉" else "#2e9e5b" if mc["state"] == "死亡交叉" else "inherit"
-    mc_html = (f"<div style='margin-top:8px;font-size:13px;font-weight:600'>已收完月K {mc['date']:%Y-%m-%d}　"
-               f"<span style='color:{_mc_col}'>{mc['state'] or '—'}</span>　K {mc['K']:.1f}"
-               f"<span style='font-weight:400;color:var(--mut)'>(D {mc['D']:.1f})</span></div>")
+    # 注意:卡片 CSS 有 .card span{display:block},所以這裡的 span 都要寫 display:inline
+    # 寫成一行,並把美元兌台幣小走勢圖從 44px 壓到 26px,讓這張卡片總高度幾乎不變(不撐高第一排)
+    # 一行顯示日期、交叉、K、D;12px 會超出卡片 232px 的內寬(208px),所以用 11px(實測約 201px)
+    _s = "display:inline;font-size:11px"
+    mc_html = (f"<div style='margin-top:6px;font-size:11px;font-weight:700;white-space:nowrap'>"
+               f"<span style='{_s};font-weight:400;color:var(--mut)'>已收完月K {mc['date']:%m/%d}</span> "
+               f"<span style='{_s};color:{_mc_col}'>{mc['state'] or '—'}</span> K {mc['K']:.1f} "
+               f"<span style='{_s};font-weight:400;color:var(--mut)'>D {mc['D']:.1f}</span></div>")
+    fx_html = re.sub(r"height:\s*44px", "height:26px", fx_html)                 # fx.py 小走勢圖原本 44px
     cards[_w] = (cards[_w][0], cards[_w][1] + mc_html + "<div style='margin-top:10px;border-top:1px solid var(--line);padding-top:2px'>" + fx_html + "</div>")
     # 距高點下跌 10~25% 與 30~40% 合併成一張(-10% ~ -40%)
     _i1 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 10~25%"))
