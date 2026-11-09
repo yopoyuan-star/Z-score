@@ -226,6 +226,7 @@ def main():
     m = m.join(kd)
     now = m.iloc[-1]
     k = model.kd_now(df)
+    mc = model.closed_month_kd(df)                      # 已收完月 K(日曆月)
 
     z, lo, hi = now["Z-SCORE"], now["Z低檔"], now["Z高檔"]
     zread = "高於 Z高檔(偏熱)" if z > hi else "低於 Z低檔(偏冷)" if z < lo else "在 Z低檔~Z高檔之間"
@@ -287,7 +288,12 @@ def main():
     cards = [c for c in cards if c[0] not in ("近一年最高價", "季線 / 年線乖離", "5年 / 10年線乖離")]
     # 美元兌台幣(含小走勢圖)移到「過熱轉弱警示」卡片下方,讓收盤卡片不要太長
     _w = next(k for k, c in enumerate(cards) if c[0] == "過熱轉弱警示")
-    cards[_w] = (cards[_w][0], cards[_w][1] + "<div style='margin-top:10px;border-top:1px solid var(--line);padding-top:2px'>" + fx_html + "</div>")
+    # 已收完月 K(日曆月,當月未過完不算):放在警示紅框下方、美元兌台幣上方
+    _mc_col = "#d9534f" if mc["state"] == "黃金交叉" else "#2e9e5b" if mc["state"] == "死亡交叉" else "inherit"
+    mc_html = (f"<div style='margin-top:8px;font-size:13px;font-weight:600'>已收完月K {mc['date']:%Y-%m-%d}　"
+               f"<span style='color:{_mc_col}'>{mc['state'] or '—'}</span>　K {mc['K']:.1f}"
+               f"<span style='font-weight:400;color:var(--mut)'>(D {mc['D']:.1f})</span></div>")
+    cards[_w] = (cards[_w][0], cards[_w][1] + mc_html + "<div style='margin-top:10px;border-top:1px solid var(--line);padding-top:2px'>" + fx_html + "</div>")
     # 距高點下跌 10~25% 與 30~40% 合併成一張(-10% ~ -40%)
     _i1 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 10~25%"))
     _i2 = next(k for k, c in enumerate(cards) if c[0].startswith("距高點下跌 30~40%"))

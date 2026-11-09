@@ -44,6 +44,19 @@ def kd_now(df):
             "月": dynamic_kd(df, M_BAR, None, kind="月")}
 
 
+def closed_month_kd(df):
+    """已收完的「日曆月」K 棒 KD:當月尚未過完的 K 棒不算(與回測『已收完月 K』相同)。
+    回傳該月最後交易日、K、D、黃金/死亡交叉。"""
+    mon = df.index.to_period("M")
+    g = df.groupby(mon).agg(High=("High", "max"), Low=("Low", "min"), Close=("Close", "last"), Date=("Close", lambda s: s.index[-1]))
+    last = df.index[-1]
+    if last.normalize() < (last + pd.offsets.MonthEnd(0)).normalize():     # 本月還沒過完 → 去掉本月這根
+        g = g.iloc[:-1]
+    k, d = _kd(g.High.to_numpy(), g.Low.to_numpy(), g.Close.to_numpy())
+    state = "黃金交叉" if k[-1] > d[-1] else "死亡交叉" if k[-1] < d[-1] else ""
+    return dict(date=g.Date.iloc[-1], K=k[-1], D=d[-1], state=state)
+
+
 def kd_log(df, days):
     """最近 days 天,每天以「當天為終點」的動態週/月 KD(對應 Excel 貼在 BG/BH 的紀錄)"""
     rows = []
