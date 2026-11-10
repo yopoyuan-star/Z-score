@@ -98,22 +98,27 @@ def ma200_state(m):
 
 
 def warn_state(m):
-    """過熱轉弱警示:自「Z 最近一次由負翻正」起算一段,六條件同時成立 = 6/6。
-    1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉;5 本段 5 年線乖離率曾 >15%;6 本段 90>120、120>150、150>180 三欄曾同時全 BUY。"""
+    """過熱轉弱警示:Z 向上穿越 model.SEG_RESET_Z(0.5)起算一段,六條件同時成立 = 6/6。
+    (原本是「Z 由負翻正」起算;回測顯示 Z 過熱後不一定會跌破 0,但近 25 年都會跌破 0.5)
+    1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉;5 本段 5 年線乖離率曾 >15%;6 本段 90>120、120>150、150>180 三欄曾同時全 BUY。
+    Z<=0 的日子不計入統計、也不會觸發 6/6;但不會清掉本段已成立的條件,要等 Z 再次向上穿越 0.5 才重新統計。"""
     z = m["Z-SCORE"]
-    cnt = sum((m[x] == "BUY").astype(int) for x in XCOLS[:9])
-    up = (z > 0) & (z.shift() <= 0)
-    ep = up.cumsum().where(z > 0)                                   # Z<=0 期間不屬於任何一段
-    seg = lambda f: f.astype(int).groupby(ep).cummax().astype(bool) & ep.notna()
+    x = model.SEG_RESET_Z
+    cnt = sum((m[c] == "BUY").astype(int) for c in XCOLS[:9])
+    up = (z > x) & (z.shift() <= x)                                 # 向上穿越 0.5 → 新的一段
+    sid = up.cumsum()
+    live = (z > 0) & (sid > 0)                                      # Z<=0 期間不計
+    seg = lambda f: (f & live).astype(int).groupby(sid).cummax().astype(bool) & live
     c = [seg(z > 1.5), seg(cnt == 9), cnt <= 3, (m["週KD"] == "死亡交叉") & (m["月KD"] == "死亡交叉"), seg(m["5年線乖離%"] > 0.15),
          seg((m[XCOLS[9]] == "BUY") & (m[XCOLS[10]] == "BUY") & (m[XCOLS[11]] == "BUY"))]
-    allok = c[0] & c[1] & c[2] & c[3] & c[4] & c[5] & ep.notna()
-    now_ok = [bool(x.iloc[-1]) for x in c]
-    first = None
-    if ep.notna().iloc[-1] and allok.any():
-        cur = allok & (ep == ep.iloc[-1])
-        first = cur[cur].index[0] if cur.any() else None            # 本段第一次四條件成立的日期
-    return now_ok, first, ep[ep == ep.iloc[-1]].index[0] if ep.notna().iloc[-1] else None
+    allok = c[0] & c[1] & c[2] & c[3] & c[4] & c[5] & live
+    now_ok = [bool(v.iloc[-1]) for v in c]
+    first = start = None
+    if live.iloc[-1]:
+        start = up[up].index[-1]                                    # 本段起點:最近一次向上穿越 0.5
+        cur = allok & (sid == sid.iloc[-1])
+        first = cur[cur].index[0] if cur.any() else None            # 本段第一次 6/6 的日期
+    return now_ok, first, start
 
 
 def ma_channel(m):
@@ -256,7 +261,7 @@ def main():
     wok, wfirst, wstart = warn_state(m)
     mk = lambda ok: "✔" if ok else "✖"
     wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})<br>{mk(wok[5])} 本段 90>120、120>150、150>180 曾同時全 BUY")
-    wnote = (f"本段自 {wstart:%Y-%m-%d} Z 翻正" if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
+    wnote = (f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}" if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
     cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 如果過熱須逐步轉換成中華電+金融股!!{'<br>(目前已達 6/6,請開始執行)' if all(wok) else ''}</div>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
