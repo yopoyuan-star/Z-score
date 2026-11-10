@@ -83,7 +83,7 @@ def bubble(d):
                 [_t(f"{'✔' if ok else '✖'} {name}", size="sm", color=RED if ok else GRAY) for name, ok in d["warn"]]),
         {"type": "box", "layout": "vertical", "margin": "md", "paddingAll": "md", "cornerRadius": "md",
          "backgroundColor": "#c1121f", "borderColor": "#ffd60a", "borderWidth": "2px", "contents": [
-            _t("⚠ 如果過熱須逐步轉換成中華電+金融股!!", size="sm", weight="bold", color="#ffffff", wrap=True)]
+            _t("⚠ 6/6 成立須轉出,改持現金或中華電!!", size="sm", weight="bold", color="#ffffff", wrap=True)]
             + ([_t("目前已達 6/6,請開始執行", size="sm", weight="bold", color="#ffd60a", wrap=True)] if warn_all else [])},
     ]
     return {"type": "bubble", "size": "mega",
