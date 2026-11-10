@@ -1,5 +1,6 @@
 """美股四大指數 MA 通道狀態(道瓊/S&P500/那斯達克/費半)→ 一張卡片。
-規則與 MA200-240 頁相同:收盤連續 3 天 > MA×1.02 → 買進;連續 3 天 < MA×0.99 → 賣出。抓不到資料時顯示『暫無資料』。"""
+規則與 MA200-240 頁相同:收盤連續 3 天 > MA×1.02 → 買進;連續 3 天 < MA×0.99 → 賣出。抓不到資料時顯示『暫無資料』。
+均線方向:MA 與 20 個交易日前相比 > +0.5% 上彎、< −0.5% 下彎,其餘走平(標在指數名稱旁)。"""
 import json
 import time
 import urllib.request
@@ -8,6 +9,7 @@ import pandas as pd
 INDICES = [("道瓊", "%5EDJI", 220), ("S&P 500", "%5EGSPC", 220), ("那斯達克", "%5EIXIC", 240), ("費半 SOX", "%5ESOX", 220)]
 UP_BAND, DN_BAND, DAYS = 0.02, 0.01, 3
 UP, DOWN = "#d9534f", "#2e9e5b"
+SLOPE_DAYS, FLAT = 20, 0.005           # 均線方向:比較 20 個交易日前,變化在 ±0.5% 內視為走平
 
 
 def fetch(sym, retries=2):
@@ -40,7 +42,8 @@ def analyze(close, n):
     sig = pd.Series("", index=close.index)
     sig[ua == DAYS], sig[ub == DAYS] = "買進", "賣出"
     sg = sig[sig != ""]
-    return dict(date=close.index[-1], close=close.iloc[-1], ma=ma.iloc[-1], dev=close.iloc[-1] / ma.iloc[-1] - 1,
+    slope = ma.iloc[-1] / ma.iloc[-1 - SLOPE_DAYS] - 1 if len(ma.dropna()) > SLOPE_DAYS else float("nan")
+    return dict(slope=slope, date=close.index[-1], close=close.iloc[-1], ma=ma.iloc[-1], dev=close.iloc[-1] / ma.iloc[-1] - 1,
                 ua=int(ua.iloc[-1]), ub=int(ub.iloc[-1]), n=n,
                 sig=sg.iloc[-1] if len(sg) else "", sig_date=sg.index[-1] if len(sg) else None)
 
@@ -60,7 +63,11 @@ def card(fetcher=fetch):
                  f"連續 {a['ub']} 天跌破 MA-{DN_BAND:.0%}" if a["ub"] else "通道內")
         sc = (UP if a["sig"] == "買進" else DOWN) if a["sig"] else "inherit"
         last = f"最近訊號 <i style='font-style:normal;color:{sc};font-weight:700'>{a['sig']}</i> {a['sig_date']:%Y-%m-%d}" if a["sig"] else "近三年無訊號"
-        rows.append(f"<div class=usr><b>{name}</b><em style='color:{col}'>{a['dev'] * 100:+.2f}%</em>"
+        sl = a["slope"]
+        trend = ("" if sl != sl else
+                 f"<span title='MA{n} 近 {SLOPE_DAYS} 個交易日 {sl * 100:+.2f}%' style='display:inline;font-size:11px;font-weight:700;margin-left:4px;color:"
+                 + (f"{UP}'>↗上彎" if sl > FLAT else f"{DOWN}'>↘下彎" if sl < -FLAT else "#888'>→走平") + "</span>")
+        rows.append(f"<div class=usr><b>{name}{trend}</b><em style='color:{col}'>{a['dev'] * 100:+.2f}%</em>"
                     f"<small>收盤 {a['close']:,.2f}｜MA{n} {a['ma']:,.2f}</small><small>{state}</small><small>{last}</small></div>")
     title = "美股 MA 通道" + (f"(收盤日 {latest:%Y-%m-%d})" if latest is not None else "")
     return title, "".join(rows)
