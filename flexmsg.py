@@ -21,13 +21,13 @@ def section(title, rows):
         _t(title, size="sm", weight="bold", color=DARK, margin="md"), *rows]}
 
 
-def kd_row(name, k, d, state, zone, lo, hi):
+def kd_row(name, k, d, state, zone, lo, hi, run=""):
     col = RED if state == "黃金交叉" else GREEN if state == "死亡交叉" else DARK
     return {"type": "box", "layout": "vertical", "spacing": "xs", "contents": [
         {"type": "box", "layout": "baseline", "contents": [
             _t(name, size="sm", weight="bold", flex=2),
-            _t(f"K {k:.1f}｜D {d:.1f}", size="sm", flex=5, color=DARK),
-            _t(state, size="sm", weight="bold", color=col, align="end", flex=3)]},
+            _t(f"K {k:.1f}｜D {d:.1f}", size="sm", flex=4, color=DARK),
+            _t(state + (f" {run}" if run else ""), size="sm", weight="bold", color=col, align="end", flex=4)]},
         _t(f"合理低~高檔 {lo:.1f}~{hi:.1f}" + (f"｜{zone}" if zone else ""), size="xs", color=GRAY)]}
 
 
@@ -42,7 +42,7 @@ def bubble(d):
         _t(f"{arrow} {abs(d['chg']):,.2f}　({d['chg_pct']:+.2%})", size="md", weight="bold", color=chg_col),
         section("趨勢訊號", [
             row("220日線", d["ma200_sig"], color=RED if d["ma200_sig"] == "BUY" else GREEN if d["ma200_sig"] == "SELL" else DARK, bold=True,
-                sub=f"{d['ma200_note']}\nMA220 {d['ma200']:,.2f}"),
+                sub=f"{d['ma200_note']}\nMA220 {d['ma200']:,.2f}" + (f"｜{d['ma200_trend']}" if d.get("ma200_trend") else "")),
             row("生命線 60×3%", d["life"]),
             row("BUY 數(5>10~80>90)", f"{d['buy9']} / 9")]),
         section("Z-SCORE", [
