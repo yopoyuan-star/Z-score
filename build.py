@@ -371,7 +371,7 @@ def main():
     cyc = exit_cycle(m, wall, wsid, closed_month_gold(df))
     cyl = cycle_lines(cyc, z)
     _tip = "\n".join(cyl).replace("'", "")
-    cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:12px;font-weight:600'>{cycle_short(cyc)}</span>" if cyl
+    cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:12px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl
                 else "<br>(目前已達 6/6,請開始執行)" if all(wok) else "")
     mk = lambda ok: "✔" if ok else "✖"
     wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})<br>{mk(wok[5])} 本段 90>120、120>150、150>180 曾同時全 BUY")
