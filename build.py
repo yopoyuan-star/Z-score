@@ -477,8 +477,17 @@ def main():
              + zsec("#8250df", "② MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}", [f"MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}"])
              + zsec("#d97706", "③ BUY 數(5>10 ~ 80>90 共 9 欄)", f"{len(buy9)} / 9",
                     ['、'.join(c.replace('天Z', '') for c in buy9) or '目前沒有 BUY', f"全部 12 欄:{sum(now[c] == 'BUY' for c in XCOLS)} 個"]))
+    # ④ 動態 KD 摘要(與下方「日 / 週 / 月 動態 KD」表同一份資料,只是複製一份到上方)
+    def kdline(n, v):
+        col = "#d9534f" if v["state"] == "黃金交叉" else "#2e9e5b" if v["state"] == "死亡交叉" else "var(--mut)"
+        tip = f"{n}KD K {v['K']:.1f}|D {v['D']:.1f}|K 合理低檔~高檔 {v['low']:.1f}~{v['high']:.1f}" + (f"|{v['zone']}" if v["zone"] else "")
+        return (f"<div title='{tip}' style='display:flex;justify-content:space-between;gap:4px;font-size:12px;font-weight:700;line-height:1.55;white-space:nowrap'>"
+                f"<span style='display:inline;font-size:12px;color:var(--fg)'>{n}KD {v['K']:.1f}/{v['D']:.1f}</span>"
+                f"<span style='display:inline;font-size:12px;color:{col}'>{v['state']}{(' ' + run_txt(n)) if run_txt(n) else ''}</span></div>")
+    zhtml += ("<div class=zsec style='border-left-color:#00897b'><i class=zlab style='color:#00897b'>④ 日 / 週 / 月 動態KD</i>"
+              + "".join(kdline(n, v) for n, v in k.items()) + "</div>")
     zi = next(k for k, c in enumerate(cards) if c[0] == "Z-SCORE(480天)")
-    cards[zi] = ("Z-SCORE 區(①藍 ②紫 ③橘)", zhtml)
+    cards[zi] = ("Z-SCORE 區(①藍 ②紫 ③橘 ④綠)", zhtml)
     cards = [c for c in cards if not c[0].startswith("5>10 ~ 80>90天Z")]
     # 220日線卡片整合四組數字(220日線訊號 / 近一年最高價 / 季年線乖離 / 5·10年線乖離),各用不同顏色與編號分區
     def wrapsec(color, label, html):
