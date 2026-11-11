@@ -155,7 +155,11 @@ def warn_state(m):
     return now_ok, first, (start, start_by_ma), allok, sid
 
 
-HALF_Z, BACKUP_DAYS = -2.5, 252     # 空手中 Z<-2.5 買一半;轉出滿 252 個交易日(約 12 個月)Z 仍未≤0 → 右側改只看月 KD 金叉
+# ===== 買賣規則(2026-11 回測定案,G1 版)=====
+LEFT = [(0.10, 0.05), (0.15, 0.075), (0.20, 0.10), (0.25, 0.125), (0.30, 0.15)]   # 距一年高點跌幅 → 加碼比例(占總資金,左側合計 50%)
+HALF_Z, ARM_DD, BACKUP_DAYS, STOP_DD = -2.5, 0.20, 252, 0.20
+# 左側:Z<-2.5 時直接補到 50%;右側先決:Z≤0 或距一年高點跌 20% 或轉出滿 252 個交易日 → 已收完月K KD 金叉全部買回
+# 保險:全部買回後收盤跌破買回均價 20% → 再轉出,等月 KD「重新」金叉(先死叉再金叉)才再買回
 
 
 def closed_month_gold(df):
@@ -172,55 +176,78 @@ def closed_month_gold(df):
 
 
 def exit_cycle(m, allok, sid, mgold):
-    """依買賣規則追蹤目前是否在「已轉出」期間。
-    6/6 成立 → 轉出;空手中 Z<-2.5 → 買一半;Z≤0 後(或轉出滿 BACKUP_DAYS 個交易日)已收完月 K KD 金叉 → 全部買回。
-    全部買回後,若右側啟動之後還沒開始新的一段,要等 6/6 本段重算(新的一段)才會再判斷 6/6(與回測相同)。"""
+    """依買賣規則逐日追蹤目前所在階段(與 ladder7_grid.py 的 G1 回測相同)。
+    6/6 成立 → 轉出;左側:距一年高點 -10/-15/-20/-25/-30% 各買 5/7.5/10/12.5/15%(Z<-2.5 直接補到 50%);
+    右側:先決(Z≤0 / 距一年高點跌 20% / 轉出滿 252 日)成立後,已收完月K KD 金叉 → 全部買回;
+    全部買回後跌破均價 20% → 再轉出(月 KD 需重新金叉)。
+    全部買回後,若右側先決成立之後還沒開始新的一段,要等 6/6 本段重算才會再判斷 6/6。"""
+    c = m["台股收盤價"].to_numpy(); hi = m["台股收盤價"].rolling(250, min_periods=1).max().to_numpy()
     z = m["Z-SCORE"].to_numpy(); ok = allok.to_numpy(); sd = sid.to_numpy(); g = mgold.reindex(m.index).fillna(False).to_numpy()
-    st, ex, half, arm, back, blk = "持有", None, None, None, None, None
+    st = dict(pos=1.0, ex=None, why=None, arm=None, done=set(), buys=[], blk=None, fresh=False, back=None, avg=None)
     for i in range(len(m)):
-        if st == "持有":
-            if ok[i] and sd[i] != blk:
-                st, ex, half, arm = "空手", i, None, None
+        if st["pos"] >= 1:
+            if st["avg"] is not None and c[i] <= st["avg"] * (1 - STOP_DD):          # 保險:跌破買回均價 20%
+                st.update(pos=0.0, ex=i, why="停損", arm=("停損後沿用", i), done=set(), buys=[], fresh=True, avg=None)
+                continue
+            if ok[i] and sd[i] != st["blk"]:
+                st.update(pos=0.0, ex=i, why="6/6", arm=None, done=set(), buys=[], fresh=False, avg=None)
             continue
-        if arm is None:
-            if z[i] <= 0: arm = ("Z≤0", i)
-            elif i - ex >= BACKUP_DAYS: arm = ("轉出滿 12 個月", i)
-        if st == "空手" and z[i] < HALF_Z:
-            st, half = "一半", i
-        if arm is not None and g[i]:
-            st, back = "持有", i
-            blk = sd[i] if sd[arm[1]] == sd[i] else None      # 買回時若還在轉出後同一段 → 等新的一段才再判斷 6/6
-    idx = m.index
-    return dict(state=st, exit=idx[ex] if ex is not None else None, n=(len(m) - 1 - ex) if ex is not None else 0,
-                half=idx[half] if half is not None else None, arm=(arm[0], idx[arm[1]]) if arm else None,
-                back=idx[back] if back is not None else None)
+        dd = c[i] / hi[i] - 1
+        if st["arm"] is None:
+            if z[i] <= 0: st["arm"] = ("Z≤0", i)
+            elif dd <= -ARM_DD: st["arm"] = (f"跌{ARM_DD:.0%}", i)
+            elif i - st["ex"] >= BACKUP_DAYS: st["arm"] = ("轉出滿 12 個月", i)
+        new = st["pos"]
+        if z[i] < HALF_Z and new < 0.5: new = 0.5
+        for k, (x, w) in enumerate(LEFT):
+            if k not in st["done"] and dd <= -x:
+                st["done"].add(k); new = min(0.5, new + w)
+        if not g[i]: st["fresh"] = False
+        if st["arm"] is not None and g[i] and not st["fresh"]: new = 1.0
+        if new > st["pos"]:
+            st["buys"].append((i, new - st["pos"], c[i])); st["pos"] = new
+            if new >= 1:
+                st["avg"] = sum(w * p for _, w, p in st["buys"]) / sum(w for _, w, _ in st["buys"])
+                st["back"] = i
+                st["blk"] = sd[i] if sd[st["arm"][1]] == sd[i] else None
+    idx = m.index; h = hi[-1]
+    nxt = next(((x, w) for k, (x, w) in enumerate(LEFT) if k not in st["done"]), None) if st["pos"] < 1 else None
+    inv = [(w, p) for _, w, p in st["buys"]] if st["pos"] < 1 else []
+    return dict(state="持有" if st["pos"] >= 1 else "空手", pos=st["pos"], exit=idx[st["ex"]] if st["ex"] is not None else None,
+                n=(len(m) - 1 - st["ex"]) if st["ex"] is not None else 0, why=st["why"],
+                arm=(st["arm"][0], idx[st["arm"][1]]) if st["arm"] else None, hi=h,
+                left_avg=(sum(w * p for w, p in inv) / sum(w for w, _ in inv)) if inv else None,
+                nxt=(nxt[0], nxt[1], h * (1 - nxt[0])) if nxt else None, arm_px=h * (1 - ARM_DD),
+                avg=st["avg"], stop_px=st["avg"] * (1 - STOP_DD) if st["avg"] else None, back=idx[st["back"]] if st["back"] is not None else None)
+
+
+def _p(x):
+    return f"{x * 100:g}%"
 
 
 def cycle_lines(cy, z):
-    """已轉出期間的提示文字(LINE 用,持有中回傳空串列)"""
+    """已轉出期間的提示(LINE 與網頁滑鼠說明用);持有中只在保險有效時提示停損價"""
     if cy["state"] == "持有":
-        return []
-    head = ("今日 6/6 成立,請開始執行轉出" if cy["n"] == 0 else
-            f"已轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)")
-    if cy["half"] is not None:
-        head += f",{cy['half']:%m/%d} 已買回一半"
+        return [f"保險:收盤跌破 {cy['stop_px']:,.0f}(買回均價 {cy['avg']:,.0f} 的 −20%)→ 再轉出"] if cy["stop_px"] else []
+    head = ("今日 6/6 成立,請開始執行轉出" if cy["n"] == 0 and cy["why"] == "6/6" else
+            f"{'停損' if cy['why'] == '停損' else '已'}轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)")
+    left = (f"左側已投入 {_p(cy['pos'])}" + (f"(均價 {cy['left_avg']:,.0f})" if cy["left_avg"] else "")
+            + (f";下一筆 跌{cy['nxt'][0]:.0%} {cy['nxt'][2]:,.0f} 加 {_p(cy['nxt'][1])}" if cy["nxt"] else ";左側已滿 50%"))
     if cy["arm"]:
-        nxt = f"右側已啟動({cy['arm'][0]} {cy['arm'][1]:%m/%d}),等已收完月K KD 金叉全部買回"
+        right = f"右側已啟動({cy['arm'][0]} {cy['arm'][1]:%m/%d}),等已收完月K KD 金叉全部買回"
     else:
-        nxt = f"右側等 Z≤0(現 {z:.2f});再 {BACKUP_DAYS - cy['n']} 個交易日仍未≤0 → 改只看月 KD 金叉"
-    return [head, nxt]
+        right = f"右側等 Z≤0 或跌 20%({cy['arm_px']:,.0f});{max(BACKUP_DAYS - cy['n'], 0)} 個交易日後未成立 → 改只看月 KD 金叉"
+    return [head, left, right]
 
 
 def cycle_short(cy):
     """網頁卡片用的一行版本(維持卡片高度)"""
     if cy["state"] == "持有":
-        return ""
-    if cy["n"] == 0:
+        return f"保險:跌破 {cy['stop_px']:,.0f} 再轉出" if cy["stop_px"] else ""
+    if cy["n"] == 0 and cy["why"] == "6/6":
         return "今日 6/6 成立,請開始執行轉出"
-    mid = "已買一半," if cy["half"] is not None else ""
-    tail = (("等月KD金叉" if mid else "右側啟動,等月KD金叉") if cy["arm"]
-            else (f"等Z≤0" if mid else f"等Z≤0,{max(BACKUP_DAYS - cy['n'], 0)}日後免等"))
-    return f"已轉出{cy['n']}日｜{mid}{tail}"
+    tail = "等月KD金叉" if cy["arm"] else "等跌20%"
+    return f"已轉出{cy['n']}日｜左{_p(cy['pos'])}｜{tail}"
 
 
 def ma_channel(m):
@@ -371,7 +398,7 @@ def main():
     cyc = exit_cycle(m, wall, wsid, closed_month_gold(df))
     cyl = cycle_lines(cyc, z)
     _tip = "\n".join(cyl).replace("'", "")
-    cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:12px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl
+    cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:12px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl and (cyc["state"] != "持有" or not all(wok))
                 else "<br>(目前已達 6/6,請開始執行)" if all(wok) else "")
     mk = lambda ok: "✔" if ok else "✖"
     wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})<br>{mk(wok[5])} 本段 90>120、120>150、150>180 曾同時全 BUY")
@@ -490,7 +517,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a></nav>
 <div class=hrow><h1>480天 Z-SCORE 與日週月動態 KD</h1>
-<div class=rules><b class=t>📋 買賣規則</b><span title="2006~2026 近 20 年,6/6 轉出後一半中華電、一半現金">　近20年年化 17.1%、回撤 −21.8%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回">① <b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div>② <b>買一半</b>:空手中 Z 跌破 −2.5</div><div title="備援:轉出滿 12 個月(252 個交易日)Z 仍未≤0,改為只看已收完月K KD 金叉">③ <b>全部買回</b>:Z≤0 後,已收完月K KD 金叉</div></div></div>
+<div class=rules><b class=t>📋 買賣規則</b><span title="G1 規則、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測(g1_halfcht.py)。0050 含息:近 15 年 22.2%、近 10 年 28.5%,最大回撤 −15.4%">　近20年年化 16.7%、回撤 −31.8%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回">① <b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② <b>左側</b>:跌 10~30% 分 5 筆買,共 50%</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險:全部買回後收盤跌破買回均價 20% → 再轉出">③ <b>右側</b>:跌20%或Z≤0後,月KD金叉全買</div></div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
