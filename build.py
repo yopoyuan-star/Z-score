@@ -250,6 +250,63 @@ def cycle_short(cy):
     return f"已轉出{cy['n']}日｜左{_p(cy['pos'])}｜{tail}"
 
 
+CSS_TREND = """
+.trend{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;align-items:center;border-radius:8px;padding:10px 14px;margin-bottom:10px}
+.trend.s_bull{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}.trend.s_pull{background:#fff4d6;box-shadow:inset 0 0 0 2px #e3bd52}
+.trend.s_bounce{background:#e8f0fb;box-shadow:inset 0 0 0 2px #9db9e3}.trend.s_bear{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}
+@media (prefers-color-scheme:dark){.trend.s_bull{background:#4a2326}.trend.s_pull{background:#4a3d1c}.trend.s_bounce{background:#1f2f4a}.trend.s_bear{background:#1f3b2a}.trend .chips span{background:#22262d!important;border-color:#333!important}}
+.trend .lab{font-size:12px;font-weight:800;color:var(--mut)}.trend .st{font-size:24px;font-weight:800;line-height:1.15}.trend .sub{font-size:12px;color:var(--mut)}
+.trend .steps{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}.trend .steps i{font-style:normal;font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px;background:#ececec;color:#999}
+.trend .steps i.on{color:#fff}.trend .chips{display:flex;gap:6px;flex-wrap:wrap}.trend .chips span{font-size:12px;padding:2px 8px;border-radius:6px;background:#fff;border:1px solid #e3e3e3}
+.trend .ok{color:#d9534f}.trend .ng{color:#2e9e5b}.trend .nt{color:#c77700}.trend .foot{grid-column:1/3;font-size:11.5px;color:var(--mut);border-top:1px dashed rgba(0,0,0,.18);padding-top:4px}
+@media (max-width:640px){.trend{grid-template-columns:1fr}.trend .foot{grid-column:1}}
+"""
+
+
+TREND_STYLE = {   # 狀態 → (class, 文字色, 說明)
+    "多頭": ("s_bull", "#c62828", "年線上彎、月KD金叉,趨勢向上"),
+    "多頭修正": ("s_pull", "#c77700", "長期多頭架構仍在｜高檔轉弱,尚未轉空"),
+    "空頭反彈": ("s_bounce", "#1f5fbf", "長期趨勢偏弱｜月KD金叉多為反彈,留意年線壓力"),
+    "空頭": ("s_bear", "#2e7d4f", "跌破年線或深度回檔,趨勢向下"),
+}
+
+
+def trend_state(m, dd, mc, wk_state, wk_run):
+    """多空狀態:看 MA220 位置與方向、已收完月 KD、距一年高點跌幅。
+    空頭結構 = 連 3 天收在 MA220×0.99 以下且年線不再上彎;深度回檔 = 距一年高點跌逾 20% 且月KD死叉。"""
+    c, ma = m["台股收盤價"], m[f"{model.SEG_MA}日均線"]
+    px, mav = c.iloc[-1], ma.iloc[-1]
+    s_ = ma.dropna()
+    slope = s_.iloc[-1] / s_.iloc[-1 - SLOPE_DAYS] - 1 if len(s_) > SLOPE_DAYS else 0.0
+    brk = bool((c.iloc[-3:] < ma.iloc[-3:] * 0.99).all())
+    up, down = slope > FLAT, slope < -FLAT
+    gold = mc["state"] == "黃金交叉"
+    deep = dd <= -0.20 and not gold
+    if up and not brk and not deep:
+        st = "多頭" if gold else "多頭修正"
+    else:
+        st = "空頭反彈" if gold else "空頭"
+    ok, ng, nt = "<b class=ok>✔</b>", "<b class=ng>✘</b>", "<b class=nt>▲</b>"
+    chips = [f"{ok if px > mav else ng} 年線{'上方' if px > mav else '下方'} {px / mav - 1:+.1%}(MA{model.SEG_MA} {mav:,.0f})",
+             f"{ok if up else ng if down else nt} 年線{'上彎' if up else '下彎' if down else '走平'} {slope:+.2%}/20日",
+             f"{ok if gold else ng} 已收完月KD {'金叉' if gold else '死叉'} {mc['K']:.1f} / {mc['D']:.1f}",
+             f"{ok if wk_state == '黃金交叉' else ng} 週KD {'金叉' if wk_state == '黃金交叉' else '死叉'}{(' ' + wk_run) if wk_run else ''}",
+             f"{nt} 距一年高點 {dd:+.1%}({'已逾' if dd <= -0.20 else '未達'} −20%)"]
+    reason = (f"年線{'上' if px > mav else '下'}方{px / mav - 1:+.1%}、年線{'上彎' if up else '下彎' if down else '走平'}、"
+              f"月KD{'金叉' if gold else '死叉'}、距高點{dd:+.1%}")
+    return dict(state=st, chips=chips, reason=reason, ma=mav)
+
+
+def trend_html(t, asof):
+    cls, col, sub = TREND_STYLE[t["state"]]
+    steps = "".join(f"<i class=on style='background:{col}'>● {n}</i>" if n == t["state"] else f"<i>{n}</i>" for n in TREND_STYLE)
+    return (f"<div class='trend {cls}'><div><div class=lab>📈 多空狀態({asof:%Y-%m-%d})</div>"
+            f"<div class=st style='color:{col}'>{t['state']}</div><div class=sub>{sub}</div></div>"
+            f"<div><div class=steps>{steps}</div><div class=chips>{''.join(f'<span>{x}</span>' for x in t['chips'])}</div></div>"
+            f"<div class=foot>轉空確認:連 3 天收在 MA{model.SEG_MA}×0.99(約 {t['ma'] * 0.99:,.0f})以下且年線轉下彎,或距一年高點跌逾 20% 且月KD死叉"
+            f"｜回到多頭:年線上彎且已收完月K KD 金叉</div></div>")
+
+
 def ma_channel(m):
     d = pd.DataFrame({"close": m["台股收盤價"], "ma": m["220日均線"]})
     d["up"], d["dn"] = d.ma * (1 + UP_BAND), d.ma * (1 - DN_BAND)
@@ -393,12 +450,13 @@ def main():
     yr = df[df.index > df.index[-1] - pd.DateOffset(years=1)]                       # 近一年(含最新一天)
     hi_px, hi_dt = yr["High"].max(), yr["High"].idxmax()
     dd = now["台股收盤價"] / hi_px - 1
+    trend = trend_state(m, dd, mc, k["週"]["state"], run_txt("週"))
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     wok, wfirst, (wstart, wstart_ma), wall, wsid = warn_state(m)
     cyc = exit_cycle(m, wall, wsid, closed_month_gold(df))
     cyl = cycle_lines(cyc, z)
     _tip = "\n".join(cyl).replace("'", "")
-    cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:12px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl and (cyc["state"] != "持有" or not all(wok))
+    cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:11px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl and (cyc["state"] != "持有" or not all(wok))
                 else "<br>(目前已達 6/6,請開始執行)" if all(wok) else "")
     mk = lambda ok: "✔" if ok else "✖"
     wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})<br>{mk(wok[5])} 本段 90>120、120>150、150>180 曾同時全 BUY")
@@ -510,7 +568,7 @@ table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8p
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
 .status{{background:var(--card);padding:8px 12px;border-radius:6px;font-size:14px}}tr.buy td:nth-child(2){{color:#d9534f;font-weight:700}}
-tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}</style></head><body>
+tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}{CSS_TREND}</style></head><body>
 <div class=hd><div class=hl>
 <nav style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
 <span style="padding:7px 14px;border-radius:999px;background:#222;color:#fff;font-size:14px;font-weight:600">📈 Z-SCORE 與動態 KD</span>
@@ -521,6 +579,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
+{trend_html(trend, m.index[-1])}
 <div class=cards>{cards_html}</div>
 <h2>日 / 週 / 月 動態 KD</h2><div class=wrap><table><tr><th>週期</th><th>K</th><th>D</th><th>K 合理低檔 ~ 高檔</th><th>位階</th><th>K 與 D</th></tr>{kd_rows}</table></div>
 <p class=n>動態:以最新一天為終點,週 K=5 個交易日、月 K=22 個交易日,KD 取 9 根;黃金交叉 = K&gt;D、死亡交叉 = K&lt;D;「連 N 日」= 目前的交叉狀態已連續 N 個交易日。</p>
@@ -542,6 +601,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                     for n, v in k.items())
     summary = (f"📊 加權指數日報 {m.index[-1]:%Y-%m-%d}\n"
                f"收盤 {now['台股收盤價']:,.2f}  {arrow} {abs(chg):,.2f}({chg_pct:+.2%})\n"
+               f"多空狀態:{trend['state']}\n    {trend['reason']}\n"
                f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
                f"220日線 {ma_lab}|MA220 {num(now['220日均線'])}{('|年線' + tr_txt + '(' + tr_note.replace('MA220 ', '') + ')') if tr_txt else ''}\n    {ma_note.replace('|', '|')}\n"
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
@@ -561,7 +621,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
               ma200_sig=ma_lab, ma200_note=ma_note, ma200=now["220日均線"], ma200_trend=(f"年線{tr_txt}({tr_note.replace('MA220 ', '')})" if tr_txt else ""), life=now["生命線60*3%"] or "—",
               buy9=len(buy9), z=z, zread=zread, zlo=lo, zhi=hi, mad=now["MAD ZSCORE"], madlo=now["MAD 低檔"], madhi=now["MAD 高檔"],
               q_y=f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}", y5_10=f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}",
-              hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd,
+              hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd, trend=trend["state"], trend_reason=trend["reason"],
               kd=[(f"{n}KD", v["K"], v["D"], v["state"], v["zone"], v["low"], v["high"], run_txt(n)) for n, v in k.items()],
               warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%", "本段 90>120、120>150、150>180 曾同時全 BUY"], wok)),
               warn_n=sum(wok), cycle=cyl, url=PAGE_URL, fx=fxd, inst=insd)

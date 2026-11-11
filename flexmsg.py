@@ -40,6 +40,9 @@ def bubble(d):
     body = [
         _t(f"{d['close']:,.2f}", size="3xl", weight="bold", color=DARK),
         _t(f"{arrow} {abs(d['chg']):,.2f}　({d['chg_pct']:+.2%})", size="md", weight="bold", color=chg_col),
+        *([_t(f"多空狀態:{d['trend']}", size="md", weight="bold",
+              color={"多頭": RED, "多頭修正": "#c77700", "空頭反彈": "#1f5fbf", "空頭": GREEN}.get(d["trend"], DARK)),
+           _t(d.get("trend_reason", ""), size="xs", color=GRAY, wrap=True)] if d.get("trend") else []),
         section("趨勢訊號", [
             row("220日線", d["ma200_sig"], color=RED if d["ma200_sig"] == "BUY" else GREEN if d["ma200_sig"] == "SELL" else DARK, bold=True,
                 sub=f"{d['ma200_note']}\nMA220 {d['ma200']:,.2f}" + (f"｜{d['ma200_trend']}" if d.get("ma200_trend") else "")),
