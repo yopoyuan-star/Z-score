@@ -123,12 +123,13 @@ def ma200_state(m):
     return "—", 0, f"介於 MA220−{DN_BAND:.0%} ~ +{UP_BAND:.0%} 之間", False
 
 
-def warn_state(m):
+def warn_state(m, extra=()):
     """過熱轉弱警示:Z 向上穿越 model.SEG_RESET_Z(0.5)起算一段,六條件同時成立 = 6/6。
     (原本是「Z 由負翻正」起算;回測顯示 Z 過熱後不一定會跌破 0,但近 25 年都會跌破 0.5)
     1 本段 Z 曾 >1.5;2 本段前 9 欄(5>10…80>90)曾同時全 BUY;3 現在 BUY 數 <=3;4 週KD、月KD 皆死亡交叉;5 本段 5 年線乖離率曾 >15%;6 本段 90>120、120>150、150>180 三欄曾同時全 BUY。
     Z<=0 的日子不計入統計、也不會觸發 6/6;但不會清掉本段已成立的條件,要等 Z 再次向上穿越 0.5 才重新統計。
-    備用重算:加權指數跌破 220 日線至少 20 個交易日後再站回,也開始新的一段(以防 Z 沒跌破 0.5;回測 25 年不影響任何進出)。"""
+    備用重算:加權指數跌破 220 日線至少 20 個交易日後再站回,也開始新的一段(以防 Z 沒跌破 0.5;回測 25 年不影響任何進出)。
+    買回重算(extra):右側全部買回的那一天也開始新的一段,過熱條件從頭累積(台股大漲時不必等 Z 或 MA220;回測 25 年不影響任何進出)。"""
     z = m["Z-SCORE"]
     x = model.SEG_RESET_Z
     cnt = sum((m[c] == "BUY").astype(int) for c in XCOLS[:9])
@@ -137,7 +138,8 @@ def warn_state(m):
     below = c_ < ma_
     run = below.astype(int).groupby((~below).cumsum()).cumsum()     # 連續在 220 日線下的天數
     maup = (~below) & below.shift(fill_value=False) & (run.shift(fill_value=0) >= model.SEG_MA_MIN_BELOW)  # 跌破 ≥20 天後站回
-    up = zup | maup
+    ext = pd.Series(m.index.isin(list(extra)), index=m.index)       # 全部買回日 → 新的一段
+    up = zup | maup | ext
     sid = up.cumsum()
     live = (z > 0) & (sid > 0)                                      # Z<=0 期間不計
     seg = lambda f: (f & live).astype(int).groupby(sid).cummax().astype(bool) & live
@@ -146,10 +148,10 @@ def warn_state(m):
     allok = c[0] & c[1] & c[2] & c[3] & c[4] & c[5] & live
     now_ok = [bool(v.iloc[-1]) for v in c]
     first = start = None
-    start_by_ma = False
+    start_by_ma = None
     if live.iloc[-1]:
-        start = up[up].index[-1]                                    # 本段起點:最近一次 Z 上穿 0.5 或站回 220 日線
-        start_by_ma = bool(maup.loc[start]) and not bool(zup.loc[start])
+        start = up[up].index[-1]                                    # 本段起點:最近一次 Z 上穿 0.5、站回 220 日線或全部買回
+        start_by_ma = ("buy" if bool(ext.loc[start]) else "ma" if bool(maup.loc[start]) and not bool(zup.loc[start]) else "z")
         cur = allok & (sid == sid.iloc[-1])
         first = cur[cur].index[0] if cur.any() else None            # 本段第一次 6/6 的日期
     return now_ok, first, (start, start_by_ma), allok, sid
@@ -180,10 +182,11 @@ def exit_cycle(m, allok, sid, mgold):
     6/6 成立 → 轉出;左側:距一年高點 -10/-15/-20/-25/-30% 各買 5/7.5/10/12.5/15%(Z<-2.5 直接補到 50%);
     右側:先決(Z≤0 / 距一年高點跌 20% / 轉出滿 252 日)成立後,已收完月K KD 金叉 → 全部買回;
     全部買回後跌破均價 20% → 再轉出(月 KD 需重新金叉)。
-    全部買回後,若右側先決成立之後還沒開始新的一段,要等 6/6 本段重算才會再判斷 6/6。"""
+    全部買回當天即開始新的一段(過熱條件從頭累積),之後才會再判斷 6/6。"""
     c = m["台股收盤價"].to_numpy(); hi = m["台股收盤價"].rolling(250, min_periods=1).max().to_numpy()
     z = m["Z-SCORE"].to_numpy(); ok = allok.to_numpy(); sd = sid.to_numpy(); g = mgold.reindex(m.index).fillna(False).to_numpy()
     st = dict(pos=1.0, ex=None, why=None, arm=None, done=set(), buys=[], blk=None, fresh=False, back=None, avg=None)
+    backs = []
     for i in range(len(m)):
         if st["pos"] >= 1:
             if st["avg"] is not None and c[i] <= st["avg"] * (1 - STOP_DD):          # 保險:跌破買回均價 20%
@@ -208,8 +211,8 @@ def exit_cycle(m, allok, sid, mgold):
             st["buys"].append((i, new - st["pos"], c[i])); st["pos"] = new
             if new >= 1:
                 st["avg"] = sum(w * p for _, w, p in st["buys"]) / sum(w for _, w, _ in st["buys"])
-                st["back"] = i
-                st["blk"] = sd[i] if sd[st["arm"][1]] == sd[i] else None
+                st["back"] = i; backs.append(m.index[i])
+                st["blk"] = None      # 全部買回當天即重算本段(由 warn_state 的 extra 處理),不再封鎖
     idx = m.index; h = hi[-1]
     nxt = next(((x, w) for k, (x, w) in enumerate(LEFT) if k not in st["done"]), None) if st["pos"] < 1 else None
     inv = [(w, p) for _, w, p in st["buys"]] if st["pos"] < 1 else []
@@ -218,7 +221,8 @@ def exit_cycle(m, allok, sid, mgold):
                 arm=(st["arm"][0], idx[st["arm"][1]]) if st["arm"] else None, hi=h,
                 left_avg=(sum(w * p for w, p in inv) / sum(w for w, _ in inv)) if inv else None,
                 nxt=(nxt[0], nxt[1], h * (1 - nxt[0])) if nxt else None, arm_px=h * (1 - ARM_DD),
-                avg=st["avg"], stop_px=st["avg"] * (1 - STOP_DD) if st["avg"] else None, back=idx[st["back"]] if st["back"] is not None else None)
+                avg=st["avg"], stop_px=st["avg"] * (1 - STOP_DD) if st["avg"] else None, back=idx[st["back"]] if st["back"] is not None else None,
+                backs=backs)
 
 
 def _p(x):
@@ -452,15 +456,22 @@ def main():
     dd = now["台股收盤價"] / hi_px - 1
     trend = trend_state(m, dd, mc, k["週"]["state"], run_txt("週"))
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
-    wok, wfirst, (wstart, wstart_ma), wall, wsid = warn_state(m)
-    cyc = exit_cycle(m, wall, wsid, closed_month_gold(df))
+    _mg = closed_month_gold(df)
+    _extra = []
+    for _ in range(4):                                  # 全部買回日會開新的一段 → 反覆計算到買回日期不再改變
+        wok, wfirst, (wstart, wstart_ma), wall, wsid = warn_state(m, _extra)
+        cyc = exit_cycle(m, wall, wsid, _mg)
+        if cyc["backs"] == _extra:
+            break
+        _extra = cyc["backs"]
     cyl = cycle_lines(cyc, z)
     _tip = "\n".join(cyl).replace("'", "")
     cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:11px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl and (cyc["state"] != "持有" or not all(wok))
                 else "<br>(目前已達 6/6,請開始執行)" if all(wok) else "")
     mk = lambda ok: "✔" if ok else "✖"
     wlines = (f"{mk(wok[0])} 本段曾 Z>1.5　{mk(wok[1])} 9 欄曾全 BUY<br>{mk(wok[2])} BUY 數≤3(現 {int(sum(now[c] == 'BUY' for c in XCOLS[:9]))})　{mk(wok[3])} 週月 KD 雙死叉<br>{mk(wok[4])} 本段 5 年乖離曾>15%(現 {pct(now['5年線乖離%'])})<br>{mk(wok[5])} 本段 90>120、120>150、150>180 曾同時全 BUY")
-    wnote = ((f"本段自 {wstart:%Y-%m-%d} 站回 MA{model.SEG_MA}" if wstart_ma else f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}")
+    wnote = ((f"本段自 {wstart:%Y-%m-%d} 全部買回重算" if wstart_ma == "buy" else
+              f"本段自 {wstart:%Y-%m-%d} 站回 MA{model.SEG_MA}" if wstart_ma == "ma" else f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}")
              if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
     cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：一半中華電、一半現金!!{cyl_html}</div>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
@@ -584,7 +595,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a></nav>
 <div class=hrow><h1>480天 Z-SCORE 與日週月動態 KD</h1>
-<div class=rules><b class=t>📋 買賣規則</b><span title="G1 規則、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測(g1_halfcht.py)。0050 含息:近 15 年 22.2%、近 10 年 28.5%,最大回撤 −15.4%">　近20年年化 16.7%、回撤 −31.8%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回">① <b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② <b>左側</b>:跌 10~30% 分 5 筆買,共 50%</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險:全部買回後收盤跌破買回均價 20% → 再轉出">③ <b>右側</b>:跌20%或Z≤0後,月KD金叉全買</div></div></div>
+<div class=rules><b class=t>📋 買賣規則</b><span title="G1 規則、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測(g1_halfcht.py)。0050 含息:近 15 年 22.2%、近 10 年 28.5%,最大回撤 −15.4%">　近20年年化 16.7%、回撤 −31.8%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① <b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② <b>左側</b>:跌 10~30% 分 5 筆買,共 50%</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險:全部買回後收盤跌破買回均價 20% → 再轉出">③ <b>右側</b>:跌20%或Z≤0後,月KD金叉全買</div></div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
