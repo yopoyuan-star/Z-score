@@ -84,7 +84,8 @@ def bubble(d):
         {"type": "box", "layout": "vertical", "margin": "md", "paddingAll": "md", "cornerRadius": "md",
          "backgroundColor": "#c1121f", "borderColor": "#ffd60a", "borderWidth": "2px", "contents": [
             _t("⚠ 6/6 成立須轉出：一半中華電、一半現金!!", size="sm", weight="bold", color="#ffffff", wrap=True)]
-            + ([_t("目前已達 6/6,請開始執行", size="sm", weight="bold", color="#ffd60a", wrap=True)] if warn_all else [])},
+            + ([_t(t, size="xs", weight="bold", color="#ffd60a", wrap=True) for t in d["cycle"]] if d.get("cycle")
+               else [_t("目前已達 6/6,請開始執行", size="sm", weight="bold", color="#ffd60a", wrap=True)] if warn_all else [])},
     ]
     return {"type": "bubble", "size": "mega",
             "header": {"type": "box", "layout": "vertical", "backgroundColor": SOFT, "paddingAll": "lg", "contents": [
