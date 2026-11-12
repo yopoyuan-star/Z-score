@@ -286,7 +286,7 @@ def ins_checks(cy):
     i_ = cy["ins"]; held = cy["state"] == "持有" and cy["avg"] is not None
     a = [held, held and i_["close"] <= cy["stop_px"]]
     b = [held, held and cy["seen"], i_["dn"] >= INS_DAYS, i_["slope"] < INS_SLOPE]
-    return held, a, b, i_["up"] >= INS_DAYS
+    return held, a, b, cy["maout"] and i_["up"] >= INS_DAYS      # 只有保險 B 賣出後才判斷站回
 
 
 def ins_status(cy):
@@ -318,11 +318,12 @@ def ins_html(cy):
     ck = lambda o: "<b class=ok>☑</b>" if o else "<b class=no>☐</b>"
     msg, col = ins_status(cy)
     stop = f"{cy['stop_px']:,.0f}(均價 {cy['avg']:,.0f} −20%)" if held else "買回均價 −20%"
+    upt = f"{min(i_['up'], INS_DAYS)}/{INS_DAYS}" if cy["maout"] else "(B 賣出後才判斷)"
     return f"""<div class=ins><div><b class=it>🛡 買回後保險</b><br><span class=mu>兩種並行,任一成立就轉出</span><br><b style="color:{col}">{msg}</b></div>
 <div class=ic><b>A 均價 −20%(原規則)</b><br>{ck(a[0])} 已全部買回<br>{ck(a[1])} 收盤跌破 {stop} → 轉出<br><span class=mu>↳ 賣出後:等月KD重新金叉買回</span></div>
 <div class=ic><b>B MA220(新增)</b> <span class=mu>4 格全打 V → 轉出</span><br>{ck(b[0])} 已全部買回　{ck(b[1])} 買回後站上過 MA220<br>
 {ck(b[2])} 連 {INS_DAYS} 天收盤 &lt; MA220−1%({i_['ma99']:,.0f}){min(i_['dn'], INS_DAYS)}/{INS_DAYS}　{ck(b[3])} 年線下彎(20日 {i_['slope'] * 100:+.2f}%)<br>
-<span class=mu>↳ 賣出後:</span>{ck(up)} 連 {INS_DAYS} 天站回 MA220({i_['ma']:,.0f}){min(i_['up'], INS_DAYS)}/{INS_DAYS} → 全部買回</div></div>"""
+<span class=mu>↳ 賣出後:</span>{ck(up)} 連 {INS_DAYS} 天站回 MA220({i_['ma']:,.0f}){upt} → 全部買回</div></div>"""
 
 
 CSS_INS = """
