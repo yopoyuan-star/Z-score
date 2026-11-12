@@ -160,6 +160,9 @@ def warn_state(m, extra=()):
 # ===== 買賣規則(2026-11 回測定案,G1 版)=====
 LEFT = [(0.10, 0.05), (0.15, 0.075), (0.20, 0.10), (0.25, 0.125), (0.30, 0.15)]   # 距一年高點跌幅 → 加碼比例(占總資金,左側合計 50%)
 HALF_Z, ARM_DD, BACKUP_DAYS, STOP_DD = -2.5, 0.20, 252, 0.20
+# 保險 B(MA220,與 A 並行,任一成立就轉出;2026-11 回測 D 版):全部買回後曾站上 MA220,之後
+#   連 3 天收盤 < MA220×0.99 且 MA220 比 20 個交易日前低 0.5% 以上 → 轉出;轉出後連 3 天收盤站回 MA220 → 全部買回(不等 KD)
+INS_DAYS, INS_BAND, INS_SLOPE = 3, 0.01, -0.005
 # 左側:Z<-2.5 時直接補到 50%;右側先決:Z≤0 或距一年高點跌 20% 或轉出滿 252 個交易日 → 已收完月K KD 金叉全部買回
 # 保險:全部買回後收盤跌破買回均價 20% → 再轉出,等月 KD「重新」金叉(先死叉再金叉)才再買回
 
@@ -185,15 +188,29 @@ def exit_cycle(m, allok, sid, mgold):
     全部買回當天即開始新的一段(過熱條件從頭累積),之後才會再判斷 6/6。"""
     c = m["台股收盤價"].to_numpy(); hi = m["台股收盤價"].rolling(250, min_periods=1).max().to_numpy()
     z = m["Z-SCORE"].to_numpy(); ok = allok.to_numpy(); sd = sid.to_numpy(); g = mgold.reindex(m.index).fillna(False).to_numpy()
-    st = dict(pos=1.0, ex=None, why=None, arm=None, done=set(), buys=[], blk=None, fresh=False, back=None, avg=None)
+    mav = m["220日均線"].to_numpy(dtype=float)
+    dnr = streak(pd.Series(c < mav * (1 - INS_BAND), index=m.index)).to_numpy()
+    upr = streak(pd.Series(c > mav, index=m.index)).to_numpy()
+    slp = (m["220日均線"] / m["220日均線"].shift(SLOPE_DAYS) - 1).to_numpy()
+    st = dict(pos=1.0, ex=None, why=None, arm=None, done=set(), buys=[], blk=None, fresh=False, back=None, avg=None,
+              seen=False, maout=False)
     backs = []
     for i in range(len(m)):
         if st["pos"] >= 1:
-            if st["avg"] is not None and c[i] <= st["avg"] * (1 - STOP_DD):          # 保險:跌破買回均價 20%
-                st.update(pos=0.0, ex=i, why="停損", arm=("停損後沿用", i), done=set(), buys=[], fresh=True, avg=None)
-                continue
+            if st["avg"] is not None:
+                if mav[i] == mav[i] and c[i] > mav[i]: st["seen"] = True
+                if c[i] <= st["avg"] * (1 - STOP_DD):          # 保險 A:跌破買回均價 20%
+                    st.update(pos=0.0, ex=i, why="停損", arm=("停損後沿用", i), done=set(), buys=[], fresh=True, avg=None, seen=False)
+                    continue
+                if st["seen"] and dnr[i] >= INS_DAYS and slp[i] < INS_SLOPE:      # 保險 B:MA220
+                    st.update(pos=0.0, ex=i, why="MA220", arm=None, done=set(), buys=[], fresh=False, avg=None, seen=False, maout=True)
+                    continue
             if ok[i] and sd[i] != st["blk"]:
-                st.update(pos=0.0, ex=i, why="6/6", arm=None, done=set(), buys=[], fresh=False, avg=None)
+                st.update(pos=0.0, ex=i, why="6/6", arm=None, done=set(), buys=[], fresh=False, avg=None, seen=False)
+            continue
+        if st["maout"]:                                   # 保險 B 轉出後:連 3 天站回 MA220 → 全部買回
+            if upr[i] >= INS_DAYS:
+                st.update(pos=1.0, maout=False, avg=c[i], seen=True, back=i)
             continue
         dd = c[i] / hi[i] - 1
         if st["arm"] is None:
@@ -211,7 +228,7 @@ def exit_cycle(m, allok, sid, mgold):
             st["buys"].append((i, new - st["pos"], c[i])); st["pos"] = new
             if new >= 1:
                 st["avg"] = sum(w * p for _, w, p in st["buys"]) / sum(w for _, w, _ in st["buys"])
-                st["back"] = i; backs.append(m.index[i])
+                st["back"] = i; backs.append(m.index[i]); st["seen"] = False
                 st["blk"] = None      # 全部買回當天即重算本段(由 warn_state 的 extra 處理),不再封鎖
     idx = m.index; h = hi[-1]
     nxt = next(((x, w) for k, (x, w) in enumerate(LEFT) if k not in st["done"]), None) if st["pos"] < 1 else None
@@ -222,7 +239,9 @@ def exit_cycle(m, allok, sid, mgold):
                 left_avg=(sum(w * p for w, p in inv) / sum(w for w, _ in inv)) if inv else None,
                 nxt=(nxt[0], nxt[1], h * (1 - nxt[0])) if nxt else None, arm_px=h * (1 - ARM_DD),
                 avg=st["avg"], stop_px=st["avg"] * (1 - STOP_DD) if st["avg"] else None, back=idx[st["back"]] if st["back"] is not None else None,
-                backs=backs)
+                backs=backs, maout=st["maout"], seen=st["seen"],
+                ins=dict(dn=int(dnr[-1]), up=int(upr[-1]), slope=float(slp[-1]), ma=float(mav[-1]), ma99=float(mav[-1]) * (1 - INS_BAND),
+                         close=float(c[-1])))
 
 
 def _p(x):
@@ -233,6 +252,11 @@ def cycle_lines(cy, z):
     """已轉出期間的提示(LINE 與網頁滑鼠說明用);持有中只在保險有效時提示停損價"""
     if cy["state"] == "持有":
         return [f"保險:收盤跌破 {cy['stop_px']:,.0f}(買回均價 {cy['avg']:,.0f} 的 −20%)→ 再轉出"] if cy["stop_px"] else []
+    if cy["maout"]:
+        i_ = cy["ins"]
+        return [("今日保險 B(MA220)成立,請轉出:一半中華電、一半現金" if cy["n"] == 0 else
+                 f"保險 B(MA220)轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)"),
+                f"連 {INS_DAYS} 天收盤站回 MA220({i_['ma']:,.0f})→ 全部買回(不等 KD);目前 {min(i_['up'], INS_DAYS)}/{INS_DAYS}"]
     head = ("今日 6/6 成立,請開始執行轉出" if cy["n"] == 0 and cy["why"] == "6/6" else
             f"{'停損' if cy['why'] == '停損' else '已'}轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)")
     left = (f"左側已投入 {_p(cy['pos'])}" + (f"(均價 {cy['left_avg']:,.0f})" if cy["left_avg"] else "")
@@ -250,9 +274,63 @@ def cycle_short(cy):
         return f"保險:跌破 {cy['stop_px']:,.0f} 再轉出" if cy["stop_px"] else ""
     if cy["n"] == 0 and cy["why"] == "6/6":
         return "今日 6/6 成立,請開始執行轉出"
+    if cy["maout"]:
+        return ("今日保險 B 成立,請轉出" if cy["n"] == 0 else
+                f"MA220保險轉出{cy['n']}日｜站回 {min(cy['ins']['up'], INS_DAYS)}/{INS_DAYS}")
     tail = "等月KD金叉" if cy["arm"] else "等跌20%"
     return f"已轉出{cy['n']}日｜左{_p(cy['pos'])}｜{tail}"
 
+
+def ins_checks(cy):
+    """買回後保險(A 均價 −20%、B MA220)各條件是否成立"""
+    i_ = cy["ins"]; held = cy["state"] == "持有" and cy["avg"] is not None
+    a = [held, held and i_["close"] <= cy["stop_px"]]
+    b = [held, held and cy["seen"], i_["dn"] >= INS_DAYS, i_["slope"] < INS_SLOPE]
+    return held, a, b, i_["up"] >= INS_DAYS
+
+
+def ins_status(cy):
+    held, a, b, _ = ins_checks(cy)
+    if cy["state"] != "持有":
+        if cy["maout"]:
+            return ("⚠ 保險 B 成立:今天轉出!" if cy["n"] == 0 else f"保險 B 轉出中({cy['exit']:%m/%d} 起 {cy['n']} 日),等站回 MA220"), "#c1121f"
+        if cy["why"] == "停損":
+            return ("⚠ 保險 A 成立:今天轉出!" if cy["n"] == 0 else "保險 A 轉出中,等月KD重新金叉買回"), "#c1121f"
+        return "目前空手(6/6 轉出中),全部買回後才啟動", "#c1121f"
+    if not held:
+        return "持有中(資料內尚未有全部買回),保險未啟動", "#888"
+    return f"持有中,保險啟動中(B 已 {sum(b)}/4)", "#1a7f37"
+
+
+def ins_lines(cy):
+    """LINE 用:保險 A / B 狀態"""
+    held, a, b, up = ins_checks(cy); i_ = cy["ins"]; ck = lambda o: "☑" if o else "☐"
+    if cy["maout"]:
+        return []                       # 已在 cycle_lines 說明
+    if not held:
+        return ["保險 A/B:全部買回後才啟動(A 跌破均價−20%、B MA220)"] if cy["state"] != "持有" else []
+    return [f"保險B(MA220){sum(b)}/4:{ck(b[1])}站上過年線 {ck(b[2])}連{INS_DAYS}天<{i_['ma99']:,.0f}({min(i_['dn'], INS_DAYS)}/{INS_DAYS}) "
+            f"{ck(b[3])}年線下彎({i_['slope'] * 100:+.2f}%)→ 全打勾就轉出"]
+
+
+def ins_html(cy):
+    held, a, b, up = ins_checks(cy); i_ = cy["ins"]
+    ck = lambda o: "<b class=ok>☑</b>" if o else "<b class=no>☐</b>"
+    msg, col = ins_status(cy)
+    stop = f"{cy['stop_px']:,.0f}(均價 {cy['avg']:,.0f} −20%)" if held else "買回均價 −20%"
+    return f"""<div class=ins><div><b class=it>🛡 買回後保險</b><br><span class=mu>兩種並行,任一成立就轉出</span><br><b style="color:{col}">{msg}</b></div>
+<div class=ic><b>A 均價 −20%(原規則)</b><br>{ck(a[0])} 已全部買回<br>{ck(a[1])} 收盤跌破 {stop} → 轉出<br><span class=mu>↳ 賣出後:等月KD重新金叉買回</span></div>
+<div class=ic><b>B MA220(新增)</b> <span class=mu>4 格全打 V → 轉出</span><br>{ck(b[0])} 已全部買回　{ck(b[1])} 買回後站上過 MA220<br>
+{ck(b[2])} 連 {INS_DAYS} 天收盤 &lt; MA220−1%({i_['ma99']:,.0f}){min(i_['dn'], INS_DAYS)}/{INS_DAYS}　{ck(b[3])} 年線下彎(20日 {i_['slope'] * 100:+.2f}%)<br>
+<span class=mu>↳ 賣出後:</span>{ck(up)} 連 {INS_DAYS} 天站回 MA220({i_['ma']:,.0f}){min(i_['up'], INS_DAYS)}/{INS_DAYS} → 全部買回</div></div>"""
+
+
+CSS_INS = """
+.ins{display:grid;grid-template-columns:minmax(170px,.8fr) 1fr 1.5fr;gap:4px 18px;border:2px solid #2f6fb5;border-radius:8px;padding:6px 12px;margin:0 0 10px;font-size:12.5px;line-height:1.55;background:var(--card)}
+.ins .ic{border-left:1px solid #ccd;padding-left:12px}.ins .it{font-size:13.5px}.ins .mu{color:var(--mut)}
+.ins b.ok{color:#1a7f37;font-size:14px}.ins b.no{color:#aaa;font-weight:400;font-size:14px}
+@media(max-width:760px){.ins{grid-template-columns:1fr}.ins .ic{border-left:0;padding-left:0;border-top:1px solid #ccd;padding-top:4px}}
+"""
 
 CSS_TREND = """
 .trend{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;align-items:center;border-radius:8px;padding:10px 14px;margin-bottom:10px}
@@ -465,6 +543,7 @@ def main():
             break
         _extra = cyc["backs"]
     cyl = cycle_lines(cyc, z)
+    insl = ins_lines(cyc)
     _tip = "\n".join(cyl).replace("'", "")
     cyl_html = (f"<br><span title='{_tip}' style='display:inline;font-size:11px;font-weight:700;color:#ffd60a'>{cycle_short(cyc)}</span>" if cyl and (cyc["state"] != "持有" or not all(wok))
                 else "<br>(目前已達 6/6,請開始執行)" if all(wok) else "")
@@ -588,7 +667,7 @@ table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8p
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
 .status{{background:var(--card);padding:8px 12px;border-radius:6px;font-size:14px}}tr.buy td:nth-child(2){{color:#d9534f;font-weight:700}}
-tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}{CSS_TREND}</style></head><body>
+tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}{CSS_TREND}{CSS_INS}</style></head><body>
 <div class=hd><div class=hl>
 <nav style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
 <span style="padding:7px 14px;border-radius:999px;background:#222;color:#fff;font-size:14px;font-weight:600">📈 Z-SCORE 與動態 KD</span>
@@ -600,6 +679,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
+{ins_html(cyc)}
 {trend_html(trend, m.index[-1])}
 <div class=cards>{cards_html}</div>
 <h2>日 / 週 / 月 動態 KD</h2><div class=wrap><table><tr><th>週期</th><th>K</th><th>D</th><th>K 合理低檔 ~ 高檔</th><th>位階</th><th>K 與 D</th></tr>{kd_rows}</table></div>
@@ -635,7 +715,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{insd['text'] if insd else '三大法人/外資期貨 暫無資料'}\n"
                f"過熱轉弱警示 {sum(wok)}/6:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}|90>120~150>180曾全BUY {mk(wok[5])}\n"
                f"⚠ 6/6 成立須轉出：一半中華電、一半現金!!{'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
-               + "".join(f"    {t}\n" for t in cyl) +
+               + "".join(f"    {t}\n" for t in cyl + insl) +
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
     fd = dict(date=f"{m.index[-1]:%Y-%m-%d}", close=now["台股收盤價"], chg=chg, chg_pct=chg_pct,
@@ -645,7 +725,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
               hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd, trend=trend["state"], trend_reason=trend["reason"],
               kd=[(f"{n}KD", v["K"], v["D"], v["state"], v["zone"], v["low"], v["high"], run_txt(n)) for n, v in k.items()],
               warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%", "本段 90>120、120>150、150>180 曾同時全 BUY"], wok)),
-              warn_n=sum(wok), cycle=cyl, url=PAGE_URL, fx=fxd, inst=insd)
+              warn_n=sum(wok), cycle=cyl + insl, url=PAGE_URL, fx=fxd, inst=insd)
     notify.run(m, summary, flexmsg.bubble(fd), flexmsg.alt_text(fd))                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
