@@ -544,6 +544,9 @@ def main():
     yr = df[df.index > df.index[-1] - pd.DateOffset(years=1)]                       # 近一年(含最新一天)
     hi_px, hi_dt = yr["High"].max(), yr["High"].idxmax()
     dd = now["台股收盤價"] / hi_px - 1
+    _aft = df.loc[hi_dt:]                                                           # 高點以來(含當天)的最低點
+    lo_px, lo_dt = _aft["Low"].min(), _aft["Low"].idxmin()
+    lo_dd = lo_px / hi_px - 1
     trend = trend_state(m, dd, mc, k["週"]["state"], run_txt("週"))
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     _mg = closed_month_gold(df)
@@ -565,7 +568,7 @@ def main():
               f"本段自 {wstart:%Y-%m-%d} 站回 MA{model.SEG_MA}" if wstart_ma == "ma" else f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}")
              if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
     cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：一半中華電、一半現金!!{cyl_html}</div>"))
-    cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>"))
+    cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>" + (f"<small>高點後最低 {lo_px:,.2f}({lo_dt:%Y-%m-%d})|最大跌幅 <b style='color:#d9534f'>{lo_dd:+.1%}</b></small>" if lo_dd < 0 else "")))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
     # 卡片排序(依你的箭頭):第一排 收盤、Z-SCORE、220日線、BUY 數、近一年最高價;第二排 季年線乖離、5/10年乖離、下跌對應指數 兩格、MAD
@@ -721,6 +724,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
                f"BUY 數 {len(buy9)}/9|全部 12 欄 {sum(now[c] == 'BUY' for c in XCOLS)} 個\n"
                f"近一年最高 {hi_px:,.2f}({hi_dt:%Y-%m-%d})|距高點 {dd:+.1%}\n"
+               + (f"高點後最低 {lo_px:,.2f}({lo_dt:%Y-%m-%d})|最大跌幅 {lo_dd:+.1%}\n" if lo_dd < 0 else "") +
                f"季線 / 年線乖離 {pct(now['季線乖離'])} / {pct(now['年線乖離'])}\n"
                f"5年 / 10年線乖離 {pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}\n"
                f"MAD ZSCORE {now['MAD ZSCORE']:.2f}(低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f})\n"
