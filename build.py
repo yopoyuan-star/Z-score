@@ -283,6 +283,16 @@ def cycle_short(cy):
     return f"已轉出{cy['n']}日｜左{_p(cy['pos'])}｜{tail}"
 
 
+def rule_checks(cy):
+    """買賣規則框:本次轉出循環中已發生的步驟打勾"""
+    ck = lambda o: '<b style="color:#1a7f37">☑</b>' if o else '<b style="color:#aaa;font-weight:400">☐</b>'
+    out = cy["state"] != "持有" and cy["why"] == "6/6"
+    pos = cy["pos"] if out else 0
+    left = (f"跌10~30%分5筆買,已{_p(pos)}/50%" if 0 < pos < 0.5 else
+            "跌10~30%分5筆買,已滿 50%" if pos >= 0.5 else "跌 10~30% 分 5 筆買,共 50%")
+    return [ck(out), ck(pos > 0), left, ck(out and bool(cy["arm"])), ck(False)]
+
+
 def ins_checks(cy):
     """買回後保險(A 高點 −20% 移動停損、B MA220)各條件是否成立"""
     i_ = cy["ins"]; held = cy["state"] == "持有" and cy["avg"] is not None
@@ -649,6 +659,7 @@ def main():
     c6 = chart(m.tail(CHART_DAYS), [("月K", "#1f77b4", 1.5, None), ("月D", "#f0ad4e", 1.5, None), ("月K高檔", "#d9534f", 1, "dot"), ("月K低檔", "#2e9e5b", 1, "dot")], "動態月 KD(K、D 與 K 合理高低檔)", 360)
     ma_html, _ = ma_channel(m)
     stamp = datetime.now(TPE)
+    rk = rule_checks(cyc)
     page = f"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>480天 Z-SCORE 與日週月動態 KD</title><style>
 :root{{--bg:#fff;--fg:#222;--mut:#666;--card:#f4f6f8;--line:#e3e3e3;--hi:#fde8e8;--pk:#fde0ec;--gr:#dcf3e4}}
@@ -677,7 +688,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
 <a href="https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex" target="_blank" rel="noopener" title="玩股網:大盤融資融券(排除 ETF)" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav>
 <div class=hrow><h1>480天 Z-SCORE 與日週月動態 KD</h1>
-<div class=rules><b class=t>📋 買賣規則</b><span title="G1 規則、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測(g1_halfcht.py)。0050 含息:近 15 年 22.2%、近 10 年 28.5%,最大回撤 −15.4%">　近20年年化 16.7%、回撤 −31.8%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① <b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② <b>左側</b>:跌 10~30% 分 5 筆買,共 50%</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後連 3 天收在 MA220×0.99 以下且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:跌20%或Z≤0後,月KD金叉全買</div></div></div>
+<div class=rules><b class=t>📋 買賣規則</b><span title="G1 規則、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測(g1_halfcht.py)。0050 含息:近 15 年 22.2%、近 10 年 28.5%,最大回撤 −15.4%">　近20年年化 16.7%、回撤 −31.8%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後連 3 天收在 MA220×0.99 以下且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div></div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
