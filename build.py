@@ -535,9 +535,21 @@ CSS2 = """
 def main():
     force = os.environ.get("FORCE") == "1"
     df, added = update_data(CSV, retries=int(os.environ.get("RETRIES", "0")))
+    inst_data = inst.fetch()                              # 三大法人 + 外資期貨 + 散戶多空比(網頁與 LINE 共用)
+    inst_only = False
     if not added and not force and os.path.exists(OUT_HTML):
-        print("沒有新資料,不重建頁面")
-        return
+        # 證交所沒有新資料時,檢查期交所(外資台指期、散戶多空比)是否出了新資料日;有就只重建網頁、不再發 LINE
+        old = open(OUT_HTML, encoding="utf-8").read()
+        def _old(pat):
+            mm = re.search(pat, old); return mm.group(1) if mm else ""
+        _, fut, ret = inst_data
+        newer = [(inst.fmt_date(x[0]) if x else "") for x in (fut, ret)]
+        olds = [_old(r"淨未平倉\(多−空\)\|資料日 ([0-9-]+)"), _old(r"散戶偏空\|資料日 ([0-9-]+)")]
+        if not any(n and n > o for n, o in zip(newer, olds)):
+            print(f"沒有新資料,不重建頁面(期交所資料日 {newer},頁面上 {olds})")
+            return
+        inst_only = True
+        print(f"期交所資料更新 {olds} → {newer},只重建網頁,不發 LINE")
     m = model.zscore_model(df)
     kd = model.kd_log(df, max(CSV_DAYS, CHART_DAYS))
     m = m.join(kd)
@@ -561,7 +573,6 @@ def main():
     runs = {"日": cross_run(_dst), "週": cross_run(m["週KD"]), "月": cross_run(m["月KD"])}
     run_txt = lambda n: ("" if not runs[n][0] else f"連{'≥' if runs[n][1] else ''}{runs[n][0]}日")
     kd_run_html = {n: (f' <small style="display:inline;font-size:12px">{run_txt(n)}</small>' if run_txt(n) else "") for n in runs}
-    inst_data = inst.fetch()                              # 三大法人 + 外資期貨(網頁與 LINE 共用)
     fx_card, fx_rows = fx.card(20)                         # 美元兌台幣 + 近 20 日小走勢圖(整合進收盤卡片);抓不到時顯示『暫無資料』
     fx_html = ("<div style='margin-top:10px;font-size:12px;color:var(--mut);font-weight:400'>美元兌台幣 USD/TWD</div>"
                "<div style='font-size:18px;font-weight:700'>" + fx_card[1].replace("<small>數字上升 = 台幣貶值</small>", "") + "</div>")
@@ -781,7 +792,8 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
               kd=[(f"{n}KD", v["K"], v["D"], v["state"], v["zone"], v["low"], v["high"], run_txt(n)) for n, v in k.items()],
               warn=list(zip(["本段 Z 曾大於 1.5", "本段 9 欄曾同時全 BUY", "BUY 數剩 3 個以下", "週、月 KD 雙死叉", "本段 5 年乖離曾大於 15%", "本段 90>120、120>150、150>180 曾同時全 BUY"], wok)),
               warn_n=sum(wok), cycle=cyl + insl, url=PAGE_URL, fx=fxd, inst=insd)
-    notify.run(m, summary, flexmsg.bubble(fd), flexmsg.alt_text(fd))                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
+    if not inst_only:
+        notify.run(m, summary, flexmsg.bubble(fd), flexmsg.alt_text(fd))                          # 每天發日報;連續第 3 天突破/跌破時,日報最上面加警示
     print(f"完成:資料至 {m.index[-1]:%Y-%m-%d},Z={z:.2f},週KD {k['週']['state']},月KD {k['月']['state']}")
 
 
