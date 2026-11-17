@@ -296,6 +296,21 @@ def cycle_short(cy):
     return f"已轉出{cy['n']}日｜{'左側已停損' if cy['leftoff'] else '左' + _p(cy['pos'])}｜{tail}"
 
 
+def z_level(closes, target, n=480):
+    """明天收盤要到多少,480 日 Z-SCORE 才會剛好等於 target(視窗含當天收盤,二分法求解)"""
+    w = [float(x) for x in closes[-(n - 1):]]
+    def zf(c):
+        a = w + [c]; mu = sum(a) / n
+        sd = (sum((x - mu) ** 2 for x in a) / (n - 1)) ** 0.5
+        return (c - mu) / sd if sd else 0.0
+    lo, hi = min(w) * 0.3, max(w) * 2.0
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if zf(mid) < target: lo = mid
+        else: hi = mid
+    return (lo + hi) / 2
+
+
 def rule_checks(cy):
     """買賣規則框:本次轉出循環中已發生的步驟打勾"""
     ck = lambda o: '<b style="color:#1a7f37">☑</b>' if o else '<b style="color:#aaa;font-weight:400">☐</b>'
@@ -594,7 +609,13 @@ def main():
     def zsec(color, label, big, lines):
         return (f"<div class=zsec style='border-left-color:{color}'><i class=zlab style='color:{color}'>{label}</i>"
                 f"<i class=zbig>{big}</i>{''.join(f'<small>{x}</small>' for x in lines)}</div>")
-    zhtml = (zsec("#1f6feb", "① Z-SCORE(480天)", f"{z:.2f}", [zread, f"Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}"])
+    _cl = m["台股收盤價"].tolist(); _px = now["台股收盤價"]
+    zlv = [(t, z_level(_cl, t)) for t in (0.0, 0.5)]
+    zlv_html = ("<span style='display:inline-block;margin-left:10px;vertical-align:middle;font-size:11px;line-height:1.35;font-weight:700;color:#1f6feb' "
+                "title='收盤要到約這個價位,480 日 Z-SCORE 才會等於 0(右側先決條件)或 0.5(本段重算門檻);每天重算'>"
+                + "<br>".join(f"{'Z≤0' if t == 0 else 'Z=0.5'} ≈ {v:,.0f} <span style='display:inline;font-size:11px;color:#d9534f'>{v / _px - 1:+.1%}</span>" for t, v in zlv)
+                + "</span>")
+    zhtml = (zsec("#1f6feb", "① Z-SCORE(480天)", f"{z:.2f}{zlv_html}", [zread, f"Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}"])
              + zsec("#8250df", "② MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}", [f"MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}"])
              + zsec("#d97706", "③ BUY 數(5>10 ~ 80>90 共 9 欄)", f"{len(buy9)} / 9",
                     ['、'.join(c.replace('天Z', '') for c in buy9) or '目前沒有 BUY', f"全部 12 欄:{sum(now[c] == 'BUY' for c in XCOLS)} 個"]))
@@ -736,6 +757,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"收盤 {now['台股收盤價']:,.2f}  {arrow} {abs(chg):,.2f}({chg_pct:+.2%})\n"
                f"多空狀態:{trend['state']}\n    {trend['reason']}\n"
                f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
+               + "    " + "|".join(f"{'Z≤0' if t == 0 else 'Z=0.5'} 約當 {v:,.0f}({v / _px - 1:+.1%})" for t, v in zlv) + "\n"
                f"220日線 {ma_lab}|MA220 {num(now['220日均線'])}{('|年線' + tr_txt + '(' + tr_note.replace('MA220 ', '') + ')') if tr_txt else ''}\n    {ma_note.replace('|', '|')}\n"
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
                f"BUY 數 {len(buy9)}/9|全部 12 欄 {sum(now[c] == 'BUY' for c in XCOLS)} 個\n"
