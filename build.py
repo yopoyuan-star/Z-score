@@ -458,7 +458,7 @@ def ma_channel(m):
                    f"<td>{r.close:,.2f}</td><td>{r.ma:,.2f}</td></tr>" for i, r in sigs.iterrows()) or "<tr><td colspan=4>近三年無訊號</td></tr>"
     return f"""<h2>台股加權指數 MA220 通道與買賣訊號</h2>
 <div class=status>{d.index[-1]:%Y-%m-%d} 收盤 {last.close:,.2f}|MA220 {last.ma:,.2f}|乖離 {(last.close / last.ma - 1) * 100:+.2f}%|<b>{state}</b></div>
-<p class=n>規則:收盤高於 MA220×{1 + UP_BAND:.2f} → 買進;收盤低於 MA220×{1 - DN_BAND:.2f} → 賣出(收盤確認當天即為訊號,隔天收盤成交;每次跨越觸發一次)。</p>
+<p class=n><span style="display:inline-block;background:#fff3c4;border-left:5px solid #f0a500;border-radius:6px;padding:6px 12px;font-weight:700;color:#5a3d00">📌 規則:收盤高於 MA220×{1 + UP_BAND:.2f} → 買進;收盤低於 MA220×{1 - DN_BAND:.2f} → 賣出(收盤確認當天即為訊號,隔天收盤成交;每次跨越觸發一次)。</span></p>
 {f.to_html(full_html=False, include_plotlyjs="cdn")}
 <details open><summary>買賣訊號(共 {len(sigs)} 筆,新到舊)</summary><div class=wrap><table><tr><th>日期</th><th>訊號</th><th>收盤</th><th>MA220</th></tr>{rows}</table></div></details>""", sigs
 
