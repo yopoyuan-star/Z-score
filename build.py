@@ -44,7 +44,7 @@ def chart(df, cols, title, h=400, first=False):
     return f.to_html(full_html=False, include_plotlyjs="cdn" if first else False)
 
 
-UP_BAND, DN_BAND, DAYS, YEARS = 0.02, 0.01, 3, 3
+UP_BAND, DN_BAND, DAYS, YEARS = 0.02, 0.01, 1, 3      # DAYS=1:收盤一站上 +2% / 跌破 −1% 當天就是訊號,隔天收盤買賣(2026-11 回測優於連 3 天)
 
 
 def streak(flag):
@@ -105,7 +105,7 @@ b.addEventListener('click',function(){if(t.value&&!window.confirm('確定清除�
 
 
 def ma200_state(m):
-    """220 日線狀態:BUY=收盤>MA220×1.02、SELL=收盤<MA220×0.99(單日狀態);連續 3 天才是『訊號』。
+    """220 日線狀態:BUY=收盤>MA220×1.02、SELL=收盤<MA220×0.99(單日狀態);DAYS 天(目前 1 天,當天收盤確認)即為『訊號』。
     回傳 (BUY/SELL/—, 連續天數, 說明, 今天是否剛好第 3 天)"""
     c, ma = m["台股收盤價"], m["220日均線"]
     ua, ub = streak(c > ma * (1 + UP_BAND)), streak(c < ma * (1 - DN_BAND))
@@ -115,7 +115,7 @@ def ma200_state(m):
             if n < DAYS:
                 note = f"已連續 {n} 天{word}|再 {DAYS - n} 天確認{sig}訊號"
             elif n == DAYS:
-                note = f"已連續 {n} 天{word}|★今日{sig}訊號(第 {DAYS} 天)"
+                note = (f"今日收盤{word}|★{sig}訊號,隔天收盤{sig}" if DAYS == 1 else f"已連續 {n} 天{word}|★今日{sig}訊號(第 {DAYS} 天)")
             else:
                 d3 = st[st == DAYS].index[-1]
                 note = f"已連續 {n} 天{word}|{sig}訊號發出日 {d3:%Y-%m-%d}"
@@ -161,8 +161,9 @@ def warn_state(m, extra=()):
 LEFT = [(0.10, 0.05), (0.15, 0.075), (0.20, 0.10), (0.25, 0.125), (0.30, 0.15)]   # 距一年高點跌幅 → 加碼比例(占總資金,左側合計 50%)
 HALF_Z, ARM_DD, BACKUP_DAYS, STOP_DD = -2.5, 0.20, 252, 0.20
 # 保險 B(MA220,與 A 並行,任一成立就轉出;2026-11 回測 D 版):全部買回後曾站上 MA220,之後
-#   連 3 天收盤 < MA220×0.99 且 MA220 比 20 個交易日前低 0.5% 以上 → 轉出;轉出後連 3 天收盤站回 MA220 → 全部買回(不等 KD)
+#   收盤 < MA220×0.99(當天)且 MA220 比 20 個交易日前低 0.5% 以上 → 轉出;轉出後連 3 天收盤站回 MA220 → 全部買回(不等 KD)
 INS_DAYS, INS_BAND, INS_SLOPE = 3, 0.01, -0.005
+INS_SELL_DAYS = 1      # 保險 B 賣出:收盤 < MA220×0.99 當天(+年線下彎)即成立;買回仍需連 INS_DAYS 天站回 MA220(2026-11 回測)
 # ④ 左側停損(2026-11):收盤跌破左側已買部位平均成本 15% → 左側全部賣出,本次循環不再做左側,只等右側全部買回
 #   回測 2006~2026:近 20 年回撤 −31.8% → −22.5%,年化 16.8% → 16.9%(只在 2008/9 觸發一次)
 LEFT_STOP = 0.15
@@ -207,7 +208,7 @@ def exit_cycle(m, allok, sid, mgold):
                 if c[i] <= st["top"] * (1 - STOP_DD):          # 保險 A:跌破買回以來最高收盤 20%(移動停損)
                     st.update(pos=0.0, ex=i, why="A", arm=None, done=set(), buys=[], fresh=False, avg=None, seen=False, maout=True)
                     continue
-                if st["seen"] and dnr[i] >= INS_DAYS and slp[i] < INS_SLOPE:      # 保險 B:MA220
+                if st["seen"] and dnr[i] >= INS_SELL_DAYS and slp[i] < INS_SLOPE:      # 保險 B:MA220
                     st.update(pos=0.0, ex=i, why="B", arm=None, done=set(), buys=[], fresh=False, avg=None, seen=False, maout=True)
                     continue
             if ok[i] and sd[i] != st["blk"]:
@@ -328,7 +329,7 @@ def ins_checks(cy):
     """買回後保險(A 高點 −20% 移動停損、B MA220)各條件是否成立"""
     i_ = cy["ins"]; held = cy["state"] == "持有" and cy["avg"] is not None
     a = [held, held and i_["close"] <= cy["stop_px"]]
-    b = [held, held and cy["seen"], i_["dn"] >= INS_DAYS, i_["slope"] < INS_SLOPE]
+    b = [held, held and cy["seen"], i_["dn"] >= INS_SELL_DAYS, i_["slope"] < INS_SLOPE]
     return held, a, b, cy["maout"] and i_["up"] >= INS_DAYS      # 只有保險 A/B 賣出後才判斷站回
 
 
@@ -350,7 +351,7 @@ def ins_lines(cy):
         return []                       # 已在 cycle_lines 說明
     if not held:
         return ["保險 A/B:全部買回後才啟動(A 高點−20%、B MA220)"] if cy["state"] != "持有" else []
-    return [f"保險B(MA220){sum(b)}/4:{ck(b[1])}站上過年線 {ck(b[2])}連{INS_DAYS}天<{i_['ma99']:,.0f}({min(i_['dn'], INS_DAYS)}/{INS_DAYS}) "
+    return [f"保險B(MA220){sum(b)}/4:{ck(b[1])}站上過年線 {ck(b[2])}收盤<{i_['ma99']:,.0f} "
             f"{ck(b[3])}年線下彎({i_['slope'] * 100:+.2f}%)→ 全打勾就轉出"]
 
 
@@ -364,7 +365,7 @@ def ins_html(cy):
     return f"""<div class=ins><div><b class=it>🛡 買回後保險</b><br><span class=mu>兩種並行,任一成立就轉出</span><br><b style="color:{col}">{msg}</b></div>
 <div class=ic><b>A 高點 −20%(移動停損)</b><br>{ck(a[0])} 已全部買回{topt}<br>{ck(a[1])} 收盤跌破 {stop} → 轉出</div>
 <div class=ic><b>B MA220</b> <span class=mu>4 格全打 V → 轉出</span><br>{ck(b[0])} 已全部買回　{ck(b[1])} 買回後站上過 MA220<br>
-{ck(b[2])} 連 {INS_DAYS} 天收盤 &lt; MA220−1%({i_['ma99']:,.0f}){min(i_['dn'], INS_DAYS)}/{INS_DAYS}　{ck(b[3])} 年線下彎(20日 {i_['slope'] * 100:+.2f}%)</div>
+{ck(b[2])} 收盤 &lt; MA220−1%({i_['ma99']:,.0f})　{ck(b[3])} 年線下彎(20日 {i_['slope'] * 100:+.2f}%)</div>
 <div class=ib><span class=mu>↳ A 或 B 賣出後:</span>{ck(up)} 連 {INS_DAYS} 天站回 MA220({i_['ma']:,.0f}){upt} → 全部買回(不等 KD)</div></div>"""
 
 
@@ -437,8 +438,8 @@ def ma_channel(m):
     d["up"], d["dn"] = d.ma * (1 + UP_BAND), d.ma * (1 - DN_BAND)
     d["ua"], d["ub"] = streak(d.close > d.up), streak(d.close < d.dn)
     d["signal"] = ""
-    d.loc[d.ua == DAYS, "signal"] = "買進"      # 連續第 3 天站上 MA220+2%
-    d.loc[d.ub == DAYS, "signal"] = "賣出"      # 連續第 3 天跌破 MA220-1%
+    d.loc[d.ua == DAYS, "signal"] = "買進"      # 收盤站上 MA220+2% 的第一天
+    d.loc[d.ub == DAYS, "signal"] = "賣出"      # 收盤跌破 MA220-1% 的第一天
     d = d[d.index >= d.index[-1] - pd.DateOffset(years=YEARS)]
     last = d.iloc[-1]
     state = (f"已連續 {int(last.ua)} 天站上 MA+{UP_BAND:.0%}" if last.ua > 0 else
@@ -457,7 +458,7 @@ def ma_channel(m):
                    f"<td>{r.close:,.2f}</td><td>{r.ma:,.2f}</td></tr>" for i, r in sigs.iterrows()) or "<tr><td colspan=4>近三年無訊號</td></tr>"
     return f"""<h2>台股加權指數 MA220 通道與買賣訊號</h2>
 <div class=status>{d.index[-1]:%Y-%m-%d} 收盤 {last.close:,.2f}|MA220 {last.ma:,.2f}|乖離 {(last.close / last.ma - 1) * 100:+.2f}%|<b>{state}</b></div>
-<p class=n>規則:收盤連續 {DAYS} 天高於 MA220×{1 + UP_BAND:.2f} → 買進;連續 {DAYS} 天低於 MA220×{1 - DN_BAND:.2f} → 賣出(於第 {DAYS} 天觸發一次)。</p>
+<p class=n>規則:收盤高於 MA220×{1 + UP_BAND:.2f} → 買進;收盤低於 MA220×{1 - DN_BAND:.2f} → 賣出(收盤確認當天即為訊號,隔天收盤成交;每次跨越觸發一次)。</p>
 {f.to_html(full_html=False, include_plotlyjs="cdn")}
 <details open><summary>買賣訊號(共 {len(sigs)} 筆,新到舊)</summary><div class=wrap><table><tr><th>日期</th><th>訊號</th><th>收盤</th><th>MA220</th></tr>{rows}</table></div></details>""", sigs
 
@@ -739,7 +740,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
 <a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="財經M平方:台股大盤融資維持率" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav>
 <div class=hrow><h1>480天 Z-SCORE 與日週月動態 KD</h1>
-<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則(含保險 A 移動停損、B MA220、④ 左側停損)、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測。近 15 年 18.2%、近 10 年 24.5%(回撤 −16.4%);0050 含息每年約再高 3~4%">　近20年年化 16.9%、回撤 −22.5%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後連 3 天收在 MA220×0.99 以下且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半中華電、一半現金),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div></div>
+<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則(含保險 A 移動停損、B MA220、④ 左側停損)、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測。近 15 年 18.2%、近 10 年 24.5%(回撤 −16.4%);0050 含息每年約再高 3~4%">　近20年年化 16.9%、回撤 −22.5%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="距一年高點 −10/−15/−20/−25/−30% 各買 5/7.5/10/12.5/15%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半中華電、一半現金),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
