@@ -44,7 +44,7 @@ def chart(df, cols, title, h=400, first=False):
     return f.to_html(full_html=False, include_plotlyjs="cdn" if first else False)
 
 
-UP_BAND, DN_BAND, DAYS, YEARS = 0.02, 0.01, 1, 3      # DAYS=1:收盤一站上 +2% / 跌破 −1% 當天就是訊號,隔天收盤買賣(2026-11 回測優於連 3 天)
+UP_BAND, DN_BAND, DAYS, YEARS = 0.02, 0.015, 1, 3     # DAYS=1:收盤一站上 +2% / 跌破 −1.5% 當天就是訊號,隔天收盤買賣(2026-11 回測:當天優於連 3 天;−1.5% 各期間不輸 −1% 且交易較少)
 
 
 def streak(flag):
@@ -105,11 +105,11 @@ b.addEventListener('click',function(){if(t.value&&!window.confirm('確定清除�
 
 
 def ma200_state(m):
-    """220 日線狀態:BUY=收盤>MA220×1.02、SELL=收盤<MA220×0.99(單日狀態);DAYS 天(目前 1 天,當天收盤確認)即為『訊號』。
+    """220 日線狀態:BUY=收盤>MA220×1.02、SELL=收盤<MA220×0.985(單日狀態);DAYS 天(目前 1 天,當天收盤確認)即為『訊號』。
     回傳 (BUY/SELL/—, 連續天數, 說明, 今天是否剛好第 3 天)"""
     c, ma = m["台股收盤價"], m["220日均線"]
     ua, ub = streak(c > ma * (1 + UP_BAND)), streak(c < ma * (1 - DN_BAND))
-    for lab, st, word, sig in (("BUY", ua, f"站上 MA220+{UP_BAND:.0%}", "買進"), ("SELL", ub, f"跌破 MA220−{DN_BAND:.0%}", "賣出")):
+    for lab, st, word, sig in (("BUY", ua, f"站上 MA220+{UP_BAND * 100:g}%", "買進"), ("SELL", ub, f"跌破 MA220−{DN_BAND * 100:g}%", "賣出")):
         n = int(st.iloc[-1])
         if n > 0:
             if n < DAYS:
@@ -120,7 +120,7 @@ def ma200_state(m):
                 d3 = st[st == DAYS].index[-1]
                 note = f"已連續 {n} 天{word}|{sig}訊號發出日 {d3:%Y-%m-%d}"
             return lab, n, note, n == DAYS
-    return "—", 0, f"介於 MA220−{DN_BAND:.0%} ~ +{UP_BAND:.0%} 之間", False
+    return "—", 0, f"介於 MA220−{DN_BAND * 100:g}% ~ +{UP_BAND * 100:g}% 之間", False
 
 
 def warn_state(m, extra=()):
@@ -439,26 +439,26 @@ def ma_channel(m):
     d["ua"], d["ub"] = streak(d.close > d.up), streak(d.close < d.dn)
     d["signal"] = ""
     d.loc[d.ua == DAYS, "signal"] = "買進"      # 收盤站上 MA220+2% 的第一天
-    d.loc[d.ub == DAYS, "signal"] = "賣出"      # 收盤跌破 MA220-1% 的第一天
+    d.loc[d.ub == DAYS, "signal"] = "賣出"      # 收盤跌破 MA220-1.5% 的第一天
     d = d[d.index >= d.index[-1] - pd.DateOffset(years=YEARS)]
     last = d.iloc[-1]
-    state = (f"已連續 {int(last.ua)} 天站上 MA+{UP_BAND:.0%}" if last.ua > 0 else
-             f"已連續 {int(last.ub)} 天跌破 MA-{DN_BAND:.0%}" if last.ub > 0 else
-             f"位於 MA-{DN_BAND:.0%} ~ MA+{UP_BAND:.0%} 通道內")
+    state = (f"已連續 {int(last.ua)} 天站上 MA+{UP_BAND * 100:g}%" if last.ua > 0 else
+             f"已連續 {int(last.ub)} 天跌破 MA-{DN_BAND * 100:g}%" if last.ub > 0 else
+             f"位於 MA-{DN_BAND * 100:g}% ~ MA+{UP_BAND * 100:g}% 通道內")
     f = go.Figure()
-    f.add_scatter(x=d.index, y=d.up, name=f"MA220+{UP_BAND:.0%}", line=dict(color="#d9534f", width=1, dash="dot"))
-    f.add_scatter(x=d.index, y=d.dn, name=f"MA220-{DN_BAND:.0%}", line=dict(color="#2e9e5b", width=1, dash="dot"),
+    f.add_scatter(x=d.index, y=d.up, name=f"MA220+{UP_BAND * 100:g}%", line=dict(color="#d9534f", width=1, dash="dot"))
+    f.add_scatter(x=d.index, y=d.dn, name=f"MA220-{DN_BAND * 100:g}%", line=dict(color="#2e9e5b", width=1, dash="dot"),
                   fill="tonexty", fillcolor="rgba(150,150,150,0.10)")
     f.add_scatter(x=d.index, y=d.ma, name="MA220", line=dict(color="#f0ad4e", width=1.6))
     f.add_scatter(x=d.index, y=d.close, name="收盤", line=dict(color="#1f77b4", width=1.6))
-    f.update_layout(title=f"台股加權指數 TAIEX(MA220 +{UP_BAND:.0%} / -{DN_BAND:.0%})", height=460, template="plotly_white",
+    f.update_layout(title=f"台股加權指數 TAIEX(MA220 +{UP_BAND * 100:g}% / -{DN_BAND * 100:g}%)", height=460, template="plotly_white",
                     hovermode="x unified", margin=dict(l=50, r=20, t=50, b=30), legend=dict(orientation="h", y=-0.12))
     sigs = d[d.signal != ""].iloc[::-1]
     rows = "".join(f"<tr class='{'buy' if r.signal == '買進' else 'sell'}'><td>{i:%Y-%m-%d}</td><td>{r.signal}</td>"
                    f"<td>{r.close:,.2f}</td><td>{r.ma:,.2f}</td></tr>" for i, r in sigs.iterrows()) or "<tr><td colspan=4>近三年無訊號</td></tr>"
     return f"""<h2>台股加權指數 MA220 通道與買賣訊號</h2>
 <div class=status>{d.index[-1]:%Y-%m-%d} 收盤 {last.close:,.2f}|MA220 {last.ma:,.2f}|乖離 {(last.close / last.ma - 1) * 100:+.2f}%|<b>{state}</b></div>
-<p class=n><span style="display:inline-block;background:#fff3c4;border-left:5px solid #f0a500;border-radius:6px;padding:6px 12px;font-weight:700;color:#5a3d00">📌 規則:收盤高於 MA220×{1 + UP_BAND:.2f} → 買進;收盤低於 MA220×{1 - DN_BAND:.2f} → 賣出(收盤確認當天即為訊號,隔天收盤成交;每次跨越觸發一次)。</span></p>
+<p class=n><span style="display:inline-block;background:#fff3c4;border-left:5px solid #f0a500;border-radius:6px;padding:6px 12px;font-weight:700;color:#5a3d00">📌 規則:收盤高於 MA220×{1 + UP_BAND:.4g} → 買進;收盤低於 MA220×{1 - DN_BAND:.4g} → 賣出(收盤確認當天即為訊號,隔天收盤下單;每次跨越觸發一次)。</span></p>
 {f.to_html(full_html=False, include_plotlyjs="cdn")}
 <details open><summary>買賣訊號(共 {len(sigs)} 筆,新到舊)</summary><div class=wrap><table><tr><th>日期</th><th>訊號</th><th>收盤</th><th>MA220</th></tr>{rows}</table></div></details>""", sigs
 
