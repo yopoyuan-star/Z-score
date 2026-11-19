@@ -1,4 +1,4 @@
-"""MA220 通知:收盤 > MA220×1.02 → 買進;收盤 < MA220×0.99 → 賣出(DAYS=1:訊號當天發一次,隔天收盤買賣)。
+"""MA220 通知:收盤 > MA220×1.02 → 買進;收盤 < MA220×0.985 → 賣出(DAYS=1:訊號當天發一次,隔天收盤買賣)。
 通道由環境變數(GitHub Secrets)決定,設了哪個就發哪個,都沒設就只印出訊息:
   簡訊 Twilio : TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, SMS_TO(例 +886912345678)
   Telegram    : TG_TOKEN, TG_CHAT_ID
@@ -11,7 +11,7 @@ import os
 import urllib.parse
 import urllib.request
 
-UP, DN, DAYS = 0.02, 0.01, 1      # 2026-11 改為當天收盤確認(回測優於連 3 天)
+UP, DN, DAYS = 0.02, 0.015, 1     # 2026-11 改為當天收盤確認、賣出 −1.5%(回測)
 
 
 def _streak(flag):
@@ -24,9 +24,9 @@ def check(m):
     ua, ub = _streak(c > ma * (1 + UP)), _streak(c < ma * (1 - DN))
     d, row = m.index[-1], m.iloc[-1]
     if ua.iloc[-1] == DAYS:
-        sig, rule = "買進", (f"收盤站上 MA220×{1 + UP:.2f},隔天收盤買進" if DAYS == 1 else f"連續 {DAYS} 天站上 MA220×{1 + UP:.2f}")
+        sig, rule = "買進", (f"收盤站上 MA220×{1 + UP:.4g},隔天收盤下單買進" if DAYS == 1 else f"連續 {DAYS} 天站上 MA220×{1 + UP:.4g}")
     elif ub.iloc[-1] == DAYS:
-        sig, rule = "賣出", (f"收盤跌破 MA220×{1 - DN:.2f},隔天收盤賣出" if DAYS == 1 else f"連續 {DAYS} 天跌破 MA220×{1 - DN:.2f}")
+        sig, rule = "賣出", (f"收盤跌破 MA220×{1 - DN:.4g},隔天收盤下單賣出" if DAYS == 1 else f"連續 {DAYS} 天跌破 MA220×{1 - DN:.4g}")
     else:
         return None, None
     return sig, (f"【加權指數{sig}訊號】{d:%Y-%m-%d}\n{rule}\n"
