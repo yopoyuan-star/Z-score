@@ -575,13 +575,13 @@ def main():
     _px = float(_c.iloc[-1])
     _below, _above = _px < now["220日均線"] * (1 - DN_BAND), _px > now["220日均線"] * (1 + UP_BAND)
     _ln = lambda tip, inner: (f"<div title='{tip}' style='margin-top:5px;padding:2px 7px;background:#fff3c4;border-left:4px solid #f0a500;border-radius:4px;"
-                              f"font-size:13px;font-weight:800;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{inner}</div>")
+                              f"font-size:13px;font-weight:800;line-height:1.45'>{inner}</div>")
     nx_up_t = f"▶ 明日收盤 ≥ {nx_up:,.0f}({nx_up / _px - 1:+.1%})即站上 MA220+{UP_BAND * 100:g}%" + (",不必賣" if _below else "")
     nx_dn_t = f"▶ 明日收盤 < {nx_dn:,.0f}({nx_dn / _px - 1:+.1%})即跌破 MA220−{DN_BAND * 100:g}%"
     _r = lambda t: f"<span style='display:inline;font-size:13px;color:#c62828'>{t}</span>"
     _g = lambda t: f"<span style='display:inline;font-size:13px;color:#2e7d32'>{t}</span>"
-    nx_html = (_ln(nx_up_t, _r(f"▶ 明日 ≥ {nx_up:,.0f} → 站上+{UP_BAND * 100:g}%")) if _below else
-               _ln(nx_dn_t, _g(f"▶ 明日 < {nx_dn:,.0f} → 跌破−{DN_BAND * 100:g}%")) if _above else
+    nx_html = (_ln(nx_up_t, _r(f"▶ 明日≥{nx_up:,.0f} 站上+{UP_BAND * 100:g}%")) if _below else
+               _ln(nx_dn_t, _g(f"▶ 明日<{nx_dn:,.0f} 跌破−{DN_BAND * 100:g}%")) if _above else
                _ln(nx_up_t + "|" + nx_dn_t, "▶ 明日" + _r(f"≥{nx_up:,.0f}買") + "｜" + _g(f"<{nx_dn:,.0f}賣")))
     nx_line = ("\n    " + nx_up_t.replace("▶ ", "") if _below else "\n    " + nx_dn_t.replace("▶ ", "") if _above
                else "\n    " + nx_up_t.replace("▶ ", "") + "\n    " + nx_dn_t.replace("▶ ", ""))
@@ -739,7 +739,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .card.m_buy{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.m_sell{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}.card.m_mid{{background:#e8f0fb;box-shadow:inset 0 0 0 2px #9db9e3}}
 .card.w3{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.w2{{background:#fff4d6;box-shadow:inset 0 0 0 2px #e3bd52}}.card.w1{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}
 @media(prefers-color-scheme:dark){{.card.m_buy{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.m_sell{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}.card.m_mid{{background:#1f2f4a;box-shadow:inset 0 0 0 2px #4a6fa5}}.card.w3{{background:#4a2326;box-shadow:inset 0 0 0 2px #b9534b}}.card.w2{{background:#4a3d1c;box-shadow:inset 0 0 0 2px #a98a2e}}.card.w1{{background:#1f3b2a;box-shadow:inset 0 0 0 2px #3f8a5c}}}}
-.card .usr{{display:grid;grid-template-columns:1fr auto;column-gap:6px;margin:2px 0 6px;font-weight:400}}.card .usr b{{font-size:14px}}.card .usr em{{font-style:normal;font-weight:700;font-size:14px;text-align:right}}.card .usr small{{grid-column:1/3;font-size:11px;color:var(--mut);line-height:1.3}}
+.card .usr{{display:grid;grid-template-columns:1fr auto;column-gap:6px;margin:4px 0 14px;font-weight:400}}.card .usr b{{font-size:17px}}.card .usr b span{{font-size:13px!important}}.card .usr em{{font-style:normal;font-weight:700;font-size:17px;text-align:right}}.card .usr small{{grid-column:1/3;font-size:13.5px;color:var(--mut);line-height:1.45}}
 .card .ptip{{margin-top:8px;padding:6px 8px;border-radius:6px;background:#c1121f;color:#fff;font-size:13px;font-weight:800;line-height:1.4;border:2px solid #ffd60a}}.card .ptip.hot{{animation:ptipb 1.6s ease-in-out infinite}}@keyframes ptipb{{50%{{background:#ff6b00}}}}@media(prefers-reduced-motion:reduce){{.card .ptip.hot{{animation:none}}}}
 .card .zsec{{border-left:5px solid;padding:2px 0 3px 8px;margin:8px 0 6px;border-radius:2px}}.card .zlab{{display:block;font-style:normal;font-size:12px;font-weight:800}}.card .zbig{{display:block;font-style:normal;font-size:22px;font-weight:700;line-height:1.25}}
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
@@ -804,7 +804,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
     fd = dict(date=f"{m.index[-1]:%Y-%m-%d}", close=now["台股收盤價"], chg=chg, chg_pct=chg_pct,
-              ma200_sig=ma_lab, ma200_note=ma_note, ma200=now["220日均線"], ma200_trend=(f"年線{tr_txt}({tr_note.replace('MA220 ', '')})" if tr_txt else ""), life=now["生命線60*3%"] or "—",
+              ma200_sig=ma_lab, ma200_note=ma_note + "\n" + nx_line.strip().replace("\n    ", "\n"), ma200=now["220日均線"], ma200_trend=(f"年線{tr_txt}({tr_note.replace('MA220 ', '')})" if tr_txt else ""), life=now["生命線60*3%"] or "—",
               buy9=len(buy9), z=z, zread=zread, zlo=lo, zhi=hi, mad=now["MAD ZSCORE"], madlo=now["MAD 低檔"], madhi=now["MAD 高檔"],
               q_y=f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}", y5_10=f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}",
               hi_px=hi_px, hi_dt=f"{hi_dt:%Y-%m-%d}", dd=dd, trend=trend["state"], trend_reason=trend["reason"],
