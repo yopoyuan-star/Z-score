@@ -567,6 +567,24 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
+    # 明日收盤關鍵點位:明天 MA220 = (近 219 天 + 明日收盤)/220,解出剛好等於 MA220×(1+UP)/(1−DN) 的收盤價
+    _c = m["台股收盤價"]
+    _base = float(_c.iloc[-219:].sum())
+    nx_up = (1 + UP_BAND) * _base / (220 - (1 + UP_BAND))
+    nx_dn = (1 - DN_BAND) * _base / (220 - (1 - DN_BAND))
+    _px = float(_c.iloc[-1])
+    _below, _above = _px < now["220日均線"] * (1 - DN_BAND), _px > now["220日均線"] * (1 + UP_BAND)
+    _ln = lambda tip, inner: (f"<div title='{tip}' style='margin-top:5px;padding:2px 7px;background:#fff3c4;border-left:4px solid #f0a500;border-radius:4px;"
+                              f"font-size:13px;font-weight:800;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{inner}</div>")
+    nx_up_t = f"▶ 明日收盤 ≥ {nx_up:,.0f}({nx_up / _px - 1:+.1%})即站上 MA220+{UP_BAND * 100:g}%" + (",不必賣" if _below else "")
+    nx_dn_t = f"▶ 明日收盤 < {nx_dn:,.0f}({nx_dn / _px - 1:+.1%})即跌破 MA220−{DN_BAND * 100:g}%"
+    _r = lambda t: f"<span style='display:inline;font-size:13px;color:#c62828'>{t}</span>"
+    _g = lambda t: f"<span style='display:inline;font-size:13px;color:#2e7d32'>{t}</span>"
+    nx_html = (_ln(nx_up_t, _r(f"▶ 明日 ≥ {nx_up:,.0f} → 站上+{UP_BAND * 100:g}%")) if _below else
+               _ln(nx_dn_t, _g(f"▶ 明日 < {nx_dn:,.0f} → 跌破−{DN_BAND * 100:g}%")) if _above else
+               _ln(nx_up_t + "|" + nx_dn_t, "▶ 明日" + _r(f"≥{nx_up:,.0f}買") + "｜" + _g(f"<{nx_dn:,.0f}賣")))
+    nx_line = ("\n    " + nx_up_t.replace("▶ ", "") if _below else "\n    " + nx_dn_t.replace("▶ ", "") if _above
+               else "\n    " + nx_up_t.replace("▶ ", "") + "\n    " + nx_dn_t.replace("▶ ", ""))
     tr_txt, tr_col, tr_note = ma_trend(m["220日均線"])
     tr_html = (f"<span title='{tr_note}' style='display:inline;font-size:15px;font-weight:700;margin-left:8px;color:{tr_col}'>年線{tr_txt}</span>" if tr_txt else "")
     _dk, _dd = model._kd(df.High.to_numpy(), df.Low.to_numpy(), df.Close.to_numpy())
@@ -579,7 +597,7 @@ def main():
                "<div style='font-size:18px;font-weight:700'>" + fx_card[1].replace("<small>數字上升 = 台幣貶值</small>", "") + "</div>")
     cards = [(f"收盤(收盤日 {m.index[-1]:%Y-%m-%d})", f"{num(now['台股收盤價'])}{chg_html}<div style='margin-top:10px'>{inst.html(inst_data)}</div>"), ("Z-SCORE(480天)", f"{z:.2f}<small>{zread}</small><small>Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}</small><small style='margin-top:8px'>MAD ZSCORE <i style='font-style:normal;font-weight:700;font-size:16px'>{now['MAD ZSCORE']:.2f}</i></small><small>MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}</small>"),
              ("MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}<small>低 {now['MAD 低檔']:.2f}|高 {now['MAD 高檔']:.2f}</small>"),
-             ("220日線 ±", f"{ma_lab}{tr_html}<small>{ma_note.replace('|', '<br>')}</small><small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
+             ("220日線 ±", f"{ma_lab}{tr_html}<small>{ma_note.replace('|', '<br>')}</small>{nx_html}<small>MA220 {num(now['220日均線'])}</small><small>生命線 60×3%:{now['生命線60*3%'] or '—'}</small>"),
              ("季線 / 年線乖離", f"{pct(now['季線乖離'])} / {pct(now['年線乖離'])}"),
              ("5年 / 10年線乖離", f"{pct(now['5年線乖離%'])} / {pct(now['10年線乖離%'])}<small>歷史均值 5年 {pct(now['5-AVG'])}|10年 {pct(now['10-AVG'])}</small>")]
     buy9 = [c for c in XCOLS[:9] if now[c] == "BUY"]
@@ -770,7 +788,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"多空狀態:{trend['state']}\n    {trend['reason']}\n"
                f"Z-SCORE(480天) {z:.2f}({zread})\n    Z低檔 {lo:.2f}|Z高檔 {hi:.2f}\n"
                + "    " + "|".join(f"{'Z≤0' if t == 0 else 'Z=0.5'} 約當 {v:,.0f}({v / _px - 1:+.1%})" for t, v in zlv) + "\n"
-               f"220日線 {ma_lab}|MA220 {num(now['220日均線'])}{('|年線' + tr_txt + '(' + tr_note.replace('MA220 ', '') + ')') if tr_txt else ''}\n    {ma_note.replace('|', '|')}\n"
+               f"220日線 {ma_lab}|MA220 {num(now['220日均線'])}{('|年線' + tr_txt + '(' + tr_note.replace('MA220 ', '') + ')') if tr_txt else ''}\n    {ma_note.replace('|', '|')}{nx_line}\n"
                f"生命線 60×3%:{now['生命線60*3%'] or '—'}\n"
                f"BUY 數 {len(buy9)}/9|全部 12 欄 {sum(now[c] == 'BUY' for c in XCOLS)} 個\n"
                f"近一年最高 {hi_px:,.2f}({hi_dt:%Y-%m-%d})|距高點 {dd:+.1%}\n"
