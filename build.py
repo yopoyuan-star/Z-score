@@ -175,6 +175,40 @@ LEFT_STOP = 0.15
 # 保險 A 或 B 轉出後:一律連 3 天收盤站回 MA220 → 全部買回(不等 KD);回測 2000~今 年化 12.5%、回撤 −46%(原規則 11.3%、−64%)
 
 
+# 一般股災(2011/2015/2018/2020/2022/2025,剔除 2000/2008)收盤高點→低點平均跌幅與標準差(2026-11 以 Yahoo 資料計算)
+CRASH_AVG = {"台股": (0.265, 0.052), "那斯達克": (0.252, 0.070), "費半": (0.339, 0.083), "S&P 500": (0.219, 0.069), "道瓊": (0.209, 0.083)}   # 顯示順序固定
+CRASH_SYM = {"道瓊": "%5EDJI", "S&P 500": "%5EGSPC", "那斯達克": "%5EIXIC", "費半": "%5ESOX"}
+
+
+def wave_dd(close):
+    """近一年(250 個交易日)最高收盤 → 之後到今天的最低收盤 的跌幅"""
+    s = close.dropna().iloc[-250:]
+    hd = s.idxmax(); lo = s.loc[hd:]
+    return float(lo.min() / s.max() - 1), hd, lo.idxmin()
+
+
+def crash_html(tw_close):
+    rows = []
+    for nm in CRASH_AVG:
+        try:
+            c = tw_close if nm == "台股" else usma.fetch(CRASH_SYM[nm])
+            if c is None or len(c) < 260: continue
+            rows.append((nm,) + wave_dd(c))
+        except Exception as e:
+            print("股災跌幅抓取失敗", nm, e)
+    tr = []
+    for nm, dd, hd, ld in rows:
+        mu, sd = CRASH_AVG[nm]; x = -dd
+        tag, col = (("超過+1σ", "#b3261e") if x > mu + sd else ("超過平均", "#d9534f") if x > mu else
+                    ("平均−1σ內", "#e67e22") if x > mu - sd else ("尚淺", "#2e9e5b"))
+        tr.append(f"<tr title='{nm}:近一年高點 {hd:%Y-%m-%d} → 低點 {ld:%Y-%m-%d};一般股災平均 −{mu:.1%}(±1σ:−{mu - sd:.1%}~−{mu + sd:.1%})'>"
+                  f"<td>{nm}</td><td style='color:{col};font-weight:700'>{dd:.1%}</td><td>−{mu:.1%}</td><td>−{mu + sd:.1%}</td>"
+                  f"<td style='color:{col};font-weight:700'>{tag}</td></tr>")
+    if not tr: return ""
+    return ("<div class=crash><b title='本波=近一年最高收盤後到今天的最低收盤;平均/+1σ=2011、2015、2018、2020、2022、2025 六次一般股災(剔除 2000/2008)'>📉 股災跌幅比較</b><span>(平均=一般股災,不含2000/2008)</span>"
+            "<table><tr><th>市場</th><th>本波</th><th>平均</th><th>+1σ</th><th>位置</th></tr>" + "".join(tr) + "</table></div>")
+
+
 def closed_month_gold(df):
     """每天可用的「已收完月 K」KD 是否黃金交叉(月底最後一個交易日算當月已收完,其餘看上個月)"""
     per = df.index.to_period("M")
@@ -575,6 +609,7 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
+    crash = crash_html(m["台股收盤價"])
     # 標題旁:MA220 負乖離 −15%~−45% 對應指數(歷史:一般股災底約 −20~−23%,2000/2008 大空頭 −41~−45%)
     _ma, _cl = float(now["220日均線"]), float(m["台股收盤價"].iloc[-1])
     _tip = {-0.20: "2015/2020/2022/2025 股災底約 −20~−23%", -0.40: "2000 年最大 −40.9%", -0.45: "2008 年最大 −44.5%"}
@@ -761,20 +796,20 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card>span.ct{{font-size:15px;font-weight:800;padding-bottom:4px;margin-bottom:6px;border-bottom:2px solid;line-height:1.3}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
-.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 380px;min-width:260px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.hrow{{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:-6px 0 -4px}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:1 1 250px;min-width:250px;max-width:312px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
+.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.crash{{flex:0 0 auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin:-6px 0 -4px}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
 .status{{background:var(--card);padding:8px 12px;border-radius:6px;font-size:14px}}tr.buy td:nth-child(2){{color:#d9534f;font-weight:700}}
 tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;margin:8px 0;font-weight:600}}{CSS2}{CSS_TREND}{CSS_INS}</style></head><body>
 <div class=hd><div class=hl>
-<nav style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+<nav style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px">
+<h1 style="margin:0 6px 0 0;font-size:22px;white-space:nowrap">480天 Z-SCORE 與日週月動態 KD</h1>
 <span style="padding:7px 14px;border-radius:999px;background:#222;color:#fff;font-size:14px;font-weight:600">📈 Z-SCORE 與動態 KD</span>
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
 <a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav>
-<div class=hrow><h1>480天 Z-SCORE<br>與日週月動態 KD</h1>
-{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則(含保險 A 移動停損、B MA220、④ 左側停損)、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測。近 15 年 18.2%、近 10 年 24.5%(回撤 −16.4%);0050 含息每年約再高 3~4%">　近20年年化 16.9%、回撤 −22.5%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半中華電、一半現金),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div></div>
+<div class=hrow>{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則(含保險 A 移動停損、B MA220、④ 左側停損)、空手時一半中華電一半現金;加權指數(不含息)2006~2026 近 20 年回測。近 15 年 18.2%、近 10 年 24.5%(回撤 −16.4%);0050 含息每年約再高 3~4%">　近20年年化 16.9%、回撤 −22.5%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半中華電、一半現金</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半中華電、一半現金),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{crash}</div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea></div></div>
