@@ -320,8 +320,8 @@ def rule_checks(cy):
     lo = out and cy["leftoff"]
     left = ("跌10~30%分5筆買,已停損賣出" if lo else f"跌10~30%分5筆買,已{_p(pos)}/50%" if 0 < pos < 0.5 else
             "跌10~30%分5筆買,已滿 50%" if pos >= 0.5 else "跌 10~30% 分 5 筆買,共 50%")
-    stop = (f"{cy['lstop'][0]:%m/%d} 已全賣,只等右側" if lo else
-            f"跌破{cy['left_avg'] * (1 - LEFT_STOP):,.0f}(均價−15%)全賣" if out and cy["left_avg"] else "跌破左側均價15%→左側全賣")
+    stop = (f"{cy['lstop'][0]:%m/%d} 左側部位已全賣,本輪停止左側,只等右側" if lo else
+            f"跌破{cy['left_avg'] * (1 - LEFT_STOP):,.0f}(均價−15%)→左側部位全賣,本輪停止左側" if out and cy["left_avg"] else "跌破左側均價15%→左側部位全賣,本輪停止左側")
     return [ck(out), ck(pos > 0 or lo), left, ck(out and bool(cy["arm"])), ck(False), ck(lo), stop]
 
 
