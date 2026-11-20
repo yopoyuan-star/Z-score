@@ -675,11 +675,18 @@ def main():
         _n1 += hit; _n2 += near
         _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{f(avg)}</td><td>{f(th)}</td>"
                      f"<td class={'y' if hit else 'n'}>{'✔' if hit else '—'}</td><td class={'y' if near else 'n'}>{'✔' if near else '—'}</td></tr>")
+    _kdr, _ng = [], 0
+    for n in ("週", "月"):
+        v = k[n]; g = "黃金" in v["state"] or "金叉" in v["state"]; _ng += g
+        _kdr.append(f"<tr><td>動態{n}KD</td><td>{v['K']:.1f} / {v['D']:.1f}</td><td style='color:{'#d9534f' if g else 'var(--mut)'};font-weight:700'>{'金叉' if g else '死叉'}</td>"
+                    f"<td>{run_txt(n) or '—'}</td><td class={'y' if g else 'n'}>{'✔' if g else '—'}</td></tr>")
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。"
                "85% 門檻:跌幅與乖離=平均×0.85;月 K 越低越接近底,門檻=平均÷0.85。僅供參考,長空頭會遠超過平均'>"
-               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/4・達成85% {_n2}/4</span>"
+               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/4・達成85% {_n2}/4・金叉 {_ng}/2</span>"
                "<table><tr><th>指標</th><th>目前</th><th>平均</th><th>85%</th><th>達平均</th><th>達85%</th></tr>"
-               + "".join(_rows) + "</table></div>")
+               + "".join(_rows) + "</table>"
+               "<table style='margin-top:4px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>金叉</th></tr>"
+               + "".join(_kdr) + "</table></div>")
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     _mg = closed_month_gold(df)
     _extra = []
