@@ -660,13 +660,26 @@ def main():
     lo_px, lo_dt = _aft["Low"].min(), _aft["Low"].idxmin()
     lo_dd = lo_px / hi_px - 1
     trend = trend_state(m, dd, mc, k["週"]["state"], run_txt("週"))
-    # 歷次股災月 K 最低值平均(2000~2025 共 8 次;剔除 2000/2008 為 6 次一般股災)vs 目前
-    _dk, _ck = float(k["月"]["K"]), float(mc["K"])
-    _c = lambda v, avg: "#d9534f" if v <= avg else "var(--fg)"
-    mk_html = ("<div class=mkb title='股災期間月 K 最低值的平均:2000、2008、2011、2015、2018、2020、2022、2025 共 8 次;一般股災剔除 2000/2008。目前值低於平均會變紅'>"
-               "<b>📊 股災月K低點</b><table><tr><th></th><th>平均(8次)</th><th>一般股災</th><th>目前</th></tr>"
-               f"<tr><td>動態月K</td><td>26.7</td><td>32.6</td><td style='font-weight:700;color:{_c(_dk, 32.6)}'>{_dk:.1f}</td></tr>"
-               f"<tr><td>已收完月K</td><td>31.1</td><td>37.8</td><td style='font-weight:700;color:{_c(_ck, 37.8)}'>{_ck:.1f}</td></tr></table></div>")
+    # 落底指標:台股 6 次一般股災(2011/2015/2018/2020/2022/2025,剔除 2000/2008)的平均底部 vs 目前
+    #   達成=到平均;接近=到平均的 85%(跌幅/乖離為平均×0.85;月 K 越低越接近底,門檻為平均÷0.85)
+    _cl_now = float(m["台股收盤價"].iloc[-1]); _hi1 = float(m["台股收盤價"].iloc[-250:].max())
+    _ma_now = float(now["220日均線"])
+    BOTTOM = [("距高點跌幅", _cl_now / _hi1 - 1, -0.265, "pct"), ("MA220乖離", _cl_now / _ma_now - 1, -0.195, "pct"),
+              ("動態月K", float(k["月"]["K"]), 32.6, "k"), ("已收完月K", float(mc["K"]), 37.8, "k")]
+    _rows, _n1, _n2 = [], 0, 0
+    for nm, v, avg, kind in BOTTOM:
+        if kind == "pct":
+            th = avg * 0.85; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1%}"
+        else:
+            th = avg / 0.85; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1f}"
+        _n1 += hit; _n2 += near
+        _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{f(avg)}</td><td>{f(th)}</td>"
+                     f"<td class={'y' if hit else 'n'}>{'✔' if hit else '—'}</td><td class={'y' if near else 'n'}>{'✔' if near else '—'}</td></tr>")
+    mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。"
+               "85% 門檻:跌幅與乖離=平均×0.85;月 K 越低越接近底,門檻=平均÷0.85。僅供參考,長空頭會遠超過平均'>"
+               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/4・達成85% {_n2}/4</span>"
+               "<table><tr><th>指標</th><th>目前</th><th>平均</th><th>85%</th><th>達平均</th><th>達85%</th></tr>"
+               + "".join(_rows) + "</table></div>")
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     _mg = closed_month_gold(df)
     _extra = []
@@ -803,7 +816,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card>span.ct{{font-size:15px;font-weight:800;padding-bottom:4px;margin-bottom:6px;border-bottom:2px solid;line-height:1.3}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
-.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.mkb{{margin-top:8px;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:12.5px;margin-top:2px}}.mkb th,.mkb td{{padding:2px 6px;border-bottom:1px solid var(--line)}}.crash{{flex:0 0 auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin:-6px 0 -4px}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
+.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.mkb{{margin-top:8px;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;width:100%;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.crash{{flex:0 0 auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin:-6px 0 -4px}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
