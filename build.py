@@ -336,7 +336,7 @@ def crash_html(tw):
         tag, col = (("超過+1σ", "#b3261e") if x > mu + sd else ("超過平均", "#d9534f") if x > mu else
                     ("平均−1σ內", "#e67e22") if x > mu - sd else ("尚淺", "#2e9e5b"))
         tr.append(f"<tr title='{nm}:近一年高點 {hd:%Y-%m-%d} → 最低價 {ld:%Y-%m-%d};一般股災平均 −{mu:.1%}(±1σ:−{mu - sd:.1%}~−{mu + sd:.1%})'>"
-                  f"<td>{nm}</td><td style='color:{col};font-weight:700'>{dd:.1%}</td><td>−{mu:.1%}</td><td>−{mu + sd:.1%}</td>"
+                  f"<td>{nm}</td><td style='color:{col};font-weight:700'>{dd:.1%}</td><td>−{mu - sd:.1%}</td><td>−{mu:.1%}</td><td>−{mu + sd:.1%}</td>"
                   f"<td style='color:{col};font-weight:700'>{tag}</td></tr>")
     if not tr: return ""
     pk = ""
@@ -356,7 +356,7 @@ def crash_html(tw):
     except Exception as e:
         print("高點乖離計算失敗", e)
     return ("<div class=crash><b title='跌幅一律用最低價:本波=近一年最高收盤後的最低價;平均/+1σ=2011、2015、2018、2020、2022、2025 六次一般股災(剔除 2000/2008),高點收盤→之後最低價'>📉 股災跌幅比較</b><span>(以最低價計;平均=一般股災,不含2000/2008)</span>"
-            "<table><tr><th>市場</th><th>本波</th><th>平均</th><th>+1σ</th><th>位置</th></tr>" + "".join(tr) + "</table>" + pk + "</div>")
+            "<table><tr><th>市場</th><th>本波</th><th>−1σ</th><th>平均</th><th>+1σ</th><th>位置</th></tr>" + "".join(tr) + "</table>" + pk + "</div>")
 
 
 def closed_month_gold(df):
