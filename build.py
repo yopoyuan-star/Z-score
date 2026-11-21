@@ -184,7 +184,7 @@ CRASH_DD = {}   # 本波跌幅(落底指標共用)
 CRASH_SYM = {"道瓊": "%5EDJI", "S&P 500": "%5EGSPC", "那斯達克": "%5EIXIC", "費半": "%5ESOX"}
 
 
-def yahoo_hl(sym, retries=2, start=946684800):
+def yahoo_hl(sym, retries=2, start=946684800, min_len=1000):
     """Yahoo 日線(2000 年起)的最低價與收盤價"""
     import json, time, urllib.request
     for _ in range(retries + 1):
@@ -196,7 +196,7 @@ def yahoo_hl(sym, retries=2, start=946684800):
                 d = pd.DataFrame({"Low": q["low"], "Close": q["close"]}, dtype=float,
                                  index=pd.to_datetime(r["timestamp"], unit="s").normalize())
                 d = d[~d.index.duplicated(keep="last")].dropna()
-                if len(d) > 1000: return d
+                if len(d) > min_len: return d
             except Exception as e:
                 print("Yahoo 抓取失敗", sym, host, e)
         time.sleep(3)
@@ -212,7 +212,7 @@ def top5_html():
     tr = []
     for code, nm in TOP5:
         try:
-            d = yahoo_hl(f"{code}.TW", retries=1, start=int(time.time()) - 3 * 365 * 86400)
+            d = yahoo_hl(f"{code}.TW", retries=1, start=int(time.time()) - 3 * 365 * 86400, min_len=300)
             if d is None or len(d) < 260: continue
             c = d.Close; px = float(c.iloc[-1]); c250 = c.iloc[-250:]; hi = float(c250.max())
             low = float(d.Low.loc[c250.idxmax():].min())
