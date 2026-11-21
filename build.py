@@ -177,6 +177,7 @@ LEFT_STOP = 0.15
 
 # 一般股災(2011/2015/2018/2020/2022/2025,剔除 2000/2008)收盤高點→低點平均跌幅與標準差(2026-11 以 Yahoo 資料計算)
 CRASH_AVG = {"台股": (0.265, 0.052), "那斯達克": (0.252, 0.070), "費半": (0.339, 0.083), "S&P 500": (0.219, 0.069), "道瓊": (0.209, 0.083)}   # 顯示順序固定
+CRASH_DD = {}   # crash_html 算出的本波跌幅(落底指標共用)
 CRASH_SYM = {"道瓊": "%5EDJI", "S&P 500": "%5EGSPC", "那斯達克": "%5EIXIC", "費半": "%5ESOX"}
 
 
@@ -193,7 +194,7 @@ def crash_html(tw_close):
         try:
             c = tw_close if nm == "台股" else usma.fetch(CRASH_SYM[nm])
             if c is None or len(c) < 260: continue
-            rows.append((nm,) + wave_dd(c))
+            rows.append((nm,) + wave_dd(c)); CRASH_DD[nm] = rows[-1][1]
         except Exception as e:
             print("股災跌幅抓取失敗", nm, e)
     tr = []
@@ -665,27 +666,38 @@ def main():
     _cl_now = float(m["台股收盤價"].iloc[-1]); _hi1 = float(m["台股收盤價"].iloc[-250:].max())
     _ma_now = float(now["220日均線"])
     BOTTOM = [("距高點跌幅", _cl_now / _hi1 - 1, -0.265, "pct"), ("MA220乖離", _cl_now / _ma_now - 1, -0.195, "pct"),
-              ("動態月K", float(k["月"]["K"]), 32.6, "k"), ("已收完月K", float(mc["K"]), 37.8, "k")]
+              ("動態週K", float(k["週"]["K"]), 12.4, "k"), ("動態月K", float(k["月"]["K"]), 32.6, "k"), ("已收完月K", float(mc["K"]), 37.8, "k"),
+              ("Z-SCORE<0", float(z), 0.0, "z")]
+    for nm in ("那斯達克", "費半"):                            # 美股科技:本波跌幅 vs 一般股災平均
+        if nm in CRASH_DD: BOTTOM.append((f"{nm}跌幅", CRASH_DD[nm], -CRASH_AVG[nm][0], "pct"))
     _rows, _n1, _n2 = [], 0, 0
     for nm, v, avg, kind in BOTTOM:
         if kind == "pct":
             th = avg * 0.85; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1%}"
+        elif kind == "z":
+            th = None; hit = near = v < 0; f = lambda x: f"{x:.2f}"
         else:
             th = avg / 0.85; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1f}"
         _n1 += hit; _n2 += near
-        _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{f(avg)}</td><td>{f(th)}</td>"
+        _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{'&lt;0' if kind == 'z' else f(avg)}</td><td>{'—' if th is None else f(th)}</td>"
                      f"<td class={'y' if hit else 'n'}>{'✔' if hit else '—'}</td><td class={'y' if near else 'n'}>{'✔' if near else '—'}</td></tr>")
+    def _rise(col):                                        # K 值比前一日高/低,連續幾日
+        d = m[col].diff().dropna().to_numpy(); up = d[-1] > 0; n = 0
+        for x in d[::-1]:
+            if (x > 0) == up and x != 0: n += 1
+            else: break
+        return ("<b style='color:#d9534f'>↑上升</b>" if up else "<b style='color:#2e9e5b'>↓下降</b>") + f" 連{n}日"
     _kdr, _ng = [], 0
     for n in ("週", "月"):
         v = k[n]; g = "黃金" in v["state"] or "金叉" in v["state"]; _ng += g
         _kdr.append(f"<tr><td>動態{n}KD</td><td>{v['K']:.1f} / {v['D']:.1f}</td><td style='color:{'#d9534f' if g else 'var(--mut)'};font-weight:700'>{'金叉' if g else '死叉'}</td>"
-                    f"<td>{run_txt(n) or '—'}</td><td class={'y' if g else 'n'}>{'✔' if g else '—'}</td></tr>")
-    mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。"
+                    f"<td>{run_txt(n) or '—'}</td><td>{_rise(n + 'K')}</td><td class={'y' if g else 'n'}>{'✔' if g else '—'}</td></tr>")
+    mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭;動態週K平均 12.4)。"
                "85% 門檻:跌幅與乖離=平均×0.85;月 K 越低越接近底,門檻=平均÷0.85。僅供參考,長空頭會遠超過平均'>"
-               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/4・達成85% {_n2}/4・金叉 {_ng}/2</span>"
+               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成85% {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
                "<table><tr><th>指標</th><th>目前</th><th>平均</th><th>85%</th><th>達平均</th><th>達85%</th></tr>"
                + "".join(_rows) + "</table>"
-               "<table style='margin-top:4px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>金叉</th></tr>"
+               "<table style='margin-top:4px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
                + "".join(_kdr) + "</table></div>")
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     _mg = closed_month_gold(df)
