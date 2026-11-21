@@ -175,26 +175,62 @@ LEFT_STOP = 0.15
 # 保險 A 或 B 轉出後:一律連 3 天收盤站回 MA220 → 全部買回(不等 KD);回測 2000~今 年化 12.5%、回撤 −46%(原規則 11.3%、−64%)
 
 
-# 一般股災(2011/2015/2018/2020/2022/2025,剔除 2000/2008)收盤高點→低點平均跌幅與標準差(2026-11 以 Yahoo 資料計算)
+# 一般股災(2011/2015/2018/2020/2022/2025,剔除 2000/2008):高點=最高收盤,低點=之後的最低價(盤中)
+# 平均與標準差每次建置時用完整歷史重算;抓不到資料時用下面的備用值
 CRASH_AVG = {"台股": (0.265, 0.052), "那斯達克": (0.252, 0.070), "費半": (0.339, 0.083), "S&P 500": (0.219, 0.069), "道瓊": (0.209, 0.083)}   # 顯示順序固定
-CRASH_DD = {}   # crash_html 算出的本波跌幅(落底指標共用)
+CRASH_WIN = [("2011-01-01", "2011-12-31"), ("2015-03-01", "2016-03-31"), ("2018-01-01", "2019-01-31"),
+             ("2020-01-01", "2020-06-30"), ("2021-11-01", "2023-03-31"), ("2024-12-01", "2025-06-30")]
+CRASH_DD = {}   # 本波跌幅(落底指標共用)
 CRASH_SYM = {"道瓊": "%5EDJI", "S&P 500": "%5EGSPC", "那斯達克": "%5EIXIC", "費半": "%5ESOX"}
 
 
-def wave_dd(close):
-    """近一年(250 個交易日)最高收盤 → 之後到今天的最低收盤 的跌幅"""
-    s = close.dropna().iloc[-250:]
-    hd = s.idxmax(); lo = s.loc[hd:]
-    return float(lo.min() / s.max() - 1), hd, lo.idxmin()
+def yahoo_hl(sym, retries=2):
+    """Yahoo 日線(2000 年起)的最低價與收盤價"""
+    import json, time, urllib.request
+    for _ in range(retries + 1):
+        for host in ("query1", "query2"):
+            try:
+                url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}?period1=946684800&period2={int(time.time()) + 86400}&interval=1d"
+                r = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=30))["chart"]["result"][0]
+                q = r["indicators"]["quote"][0]
+                d = pd.DataFrame({"Low": q["low"], "Close": q["close"]}, dtype=float,
+                                 index=pd.to_datetime(r["timestamp"], unit="s").normalize())
+                d = d[~d.index.duplicated(keep="last")].dropna()
+                if len(d) > 1000: return d
+            except Exception as e:
+                print("Yahoo 抓取失敗", sym, host, e)
+        time.sleep(3)
+    return None
 
 
-def crash_html(tw_close):
+def crash_avg(d):
+    """六次一般股災:窗口內最低價 ÷ 之前一年內最高收盤 − 1,回傳 (平均跌幅, 標準差)"""
+    v = []
+    for a, b in CRASH_WIN:
+        w = d.loc[a:b]
+        if w.empty: return None
+        t = w.Low.idxmin()
+        peak = d.Close.loc[pd.Timestamp(a) - pd.DateOffset(years=1):t].max()
+        v.append(1 - w.Low.min() / peak)
+    return float(np.mean(v)), float(np.std(v, ddof=1))
+
+
+def wave_dd(d):
+    """近一年(250 個交易日)最高收盤 → 之後到今天的最低價 的跌幅"""
+    c = d.Close.dropna().iloc[-250:]
+    hd = c.idxmax(); lo = d.Low.loc[hd:]
+    return float(lo.min() / c.max() - 1), hd, lo.idxmin()
+
+
+def crash_html(tw):
     rows = []
     for nm in CRASH_AVG:
         try:
-            c = tw_close if nm == "台股" else usma.fetch(CRASH_SYM[nm])
-            if c is None or len(c) < 260: continue
-            rows.append((nm,) + wave_dd(c)); CRASH_DD[nm] = rows[-1][1]
+            d = tw if nm == "台股" else yahoo_hl(CRASH_SYM[nm])
+            if d is None or len(d) < 260: continue
+            ca = crash_avg(d)
+            if ca: CRASH_AVG[nm] = ca                     # 用最新完整資料重算平均
+            rows.append((nm,) + wave_dd(d)); CRASH_DD[nm] = rows[-1][1]
         except Exception as e:
             print("股災跌幅抓取失敗", nm, e)
     tr = []
@@ -202,11 +238,11 @@ def crash_html(tw_close):
         mu, sd = CRASH_AVG[nm]; x = -dd
         tag, col = (("超過+1σ", "#b3261e") if x > mu + sd else ("超過平均", "#d9534f") if x > mu else
                     ("平均−1σ內", "#e67e22") if x > mu - sd else ("尚淺", "#2e9e5b"))
-        tr.append(f"<tr title='{nm}:近一年高點 {hd:%Y-%m-%d} → 低點 {ld:%Y-%m-%d};一般股災平均 −{mu:.1%}(±1σ:−{mu - sd:.1%}~−{mu + sd:.1%})'>"
+        tr.append(f"<tr title='{nm}:近一年高點 {hd:%Y-%m-%d} → 最低價 {ld:%Y-%m-%d};一般股災平均 −{mu:.1%}(±1σ:−{mu - sd:.1%}~−{mu + sd:.1%})'>"
                   f"<td>{nm}</td><td style='color:{col};font-weight:700'>{dd:.1%}</td><td>−{mu:.1%}</td><td>−{mu + sd:.1%}</td>"
                   f"<td style='color:{col};font-weight:700'>{tag}</td></tr>")
     if not tr: return ""
-    return ("<div class=crash><b title='本波=近一年最高收盤後到今天的最低收盤;平均/+1σ=2011、2015、2018、2020、2022、2025 六次一般股災(剔除 2000/2008)'>📉 股災跌幅比較</b><span>(平均=一般股災,不含2000/2008)</span>"
+    return ("<div class=crash><b title='跌幅一律用最低價:本波=近一年最高收盤後的最低價;平均/+1σ=2011、2015、2018、2020、2022、2025 六次一般股災(剔除 2000/2008),高點收盤→之後最低價'>📉 股災跌幅比較</b><span>(以最低價計;平均=一般股災,不含2000/2008)</span>"
             "<table><tr><th>市場</th><th>本波</th><th>平均</th><th>+1σ</th><th>位置</th></tr>" + "".join(tr) + "</table></div>")
 
 
@@ -610,7 +646,7 @@ def main():
     arrow = "▲" if chg > 0 else "▼" if chg < 0 else "－"
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
-    crash = crash_html(m["台股收盤價"])
+    crash = crash_html(pd.DataFrame({"Low": m["最低價"], "Close": m["台股收盤價"]}))
     # 標題旁:MA220 負乖離 −15%~−45% 對應指數(歷史:一般股災底約 −20~−23%,2000/2008 大空頭 −41~−45%)
     _ma, _cl = float(now["220日均線"]), float(m["台股收盤價"].iloc[-1])
     _tip = {-0.20: "2015/2020/2022/2025 股災底約 −20~−23%", -0.40: "2000 年最大 −40.9%", -0.45: "2008 年最大 −44.5%"}
@@ -663,9 +699,10 @@ def main():
     trend = trend_state(m, dd, mc, k["週"]["state"], run_txt("週"))
     # 落底指標:台股 6 次一般股災(2011/2015/2018/2020/2022/2025,剔除 2000/2008)的平均底部 vs 目前
     #   達成=到平均;接近=到平均的 85%(跌幅/乖離為平均×0.85;月 K 越低越接近底,門檻為平均÷0.85)
-    _cl_now = float(m["台股收盤價"].iloc[-1]); _hi1 = float(m["台股收盤價"].iloc[-250:].max())
+    _cl_now = float(m["台股收盤價"].iloc[-1]); _c250 = m["台股收盤價"].iloc[-250:]; _hi1 = float(_c250.max())
+    _wave_low = float(m["最低價"].loc[_c250.idxmax():].min())        # 一年高點之後的最低價(盤中)
     _ma_now = float(now["220日均線"])
-    BOTTOM = [("距高點跌幅", _cl_now / _hi1 - 1, -0.265, "pct"), ("MA220乖離", _cl_now / _ma_now - 1, -0.195, "pct"),
+    BOTTOM = [("最低價跌幅", _wave_low / _hi1 - 1, -CRASH_AVG["台股"][0], "pct"), ("MA220乖離", _cl_now / _ma_now - 1, -0.195, "pct"),
               ("動態週K", float(k["週"]["K"]), 12.4, "k"), ("動態月K", float(k["月"]["K"]), 32.6, "k"), ("已收完月K", float(mc["K"]), 37.8, "k"),
               ("Z-SCORE<0", float(z), 0.0, "z")]
     for nm in ("那斯達克", "費半"):                            # 美股科技:本波跌幅 vs 一般股災平均
@@ -692,11 +729,26 @@ def main():
         v = k[n]; g = "黃金" in v["state"] or "金叉" in v["state"]; _ng += g
         _kdr.append(f"<tr><td>動態{n}KD</td><td>{v['K']:.1f} / {v['D']:.1f}</td><td style='color:{'#d9534f' if g else 'var(--mut)'};font-weight:700'>{'金叉' if g else '死叉'}</td>"
                     f"<td>{run_txt(n) or '—'}</td><td>{_rise(n + 'K')}</td><td class={'y' if g else 'n'}>{'✔' if g else '—'}</td></tr>")
+    # 止跌訊號(2009~2026 回測):動態週K連續上升 3 日 + 距高點跌幅 ≤ −20% + MA220 乖離 ≤ −10%
+    #   嚴格=三項同一天成立(5 次,4 次之後 60 日沒再跌超過 3%);寬鬆=跌幅/乖離近 5 日內曾達標(9 次,含 2025/04/25)
+    _wk = m["週K"].to_numpy(); _wr = 0
+    for _i in range(len(_wk) - 1, 0, -1):
+        if _wk[_i] > _wk[_i - 1]: _wr += 1
+        else: break
+    _cs = m["台股收盤價"]; _dvS = _cs / m["220日均線"] - 1; _wdd = _wave_low / _hi1 - 1      # 跌幅=一年高點後最低價
+    _s1 = _wr >= 3 and _wdd <= -0.20 and _dvS.iloc[-1] <= -0.10
+    _s2 = _wr >= 3 and _wdd <= -0.20 and _dvS.iloc[-6:].min() <= -0.10
+    _ok = lambda b: "<b style='color:#d9534f'>✔</b>" if b else "<span style='color:var(--mut)'>—</span>"
+    _stop_html = ("<div style='margin-top:5px;padding:3px 6px;border-radius:6px;background:" + ("#fde2e1" if (_s1 or _s2) else "var(--bg)") + ";font-size:12px' "
+                  "title='跌幅=近一年最高收盤後的最低價(盤中)。回測 2009~2026:嚴格版 8 次訊號(含 2025/04/25),62% 之後 60 日內沒再跌超過 3%,20 日後平均 +6.1%、勝率 88%;寬鬆版 9 次,67%。訊號通常比最低點晚 2 天~2 週'>"
+                  f"<b>🚦 止跌訊號</b> 週K連升 <b>{min(_wr, 3)}/3</b> 日・跌幅≤−20% {_ok(_wdd <= -0.20)}・乖離≤−10% {_ok(_dvS.iloc[-1] <= -0.10)}"
+                  f"<br>嚴格(今日乖離) {_ok(_s1)}　寬鬆(近5日乖離) {_ok(_s2)}</div>")
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭;動態週K平均 12.4)。"
                "85% 門檻:跌幅與乖離=平均×0.85;月 K 越低越接近底,門檻=平均÷0.85。僅供參考,長空頭會遠超過平均'>"
                f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成85% {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
                "<table><tr><th>指標</th><th>目前</th><th>平均</th><th>85%</th><th>達平均</th><th>達85%</th></tr>"
                + "".join(_rows) + "</table>"
+               + _stop_html +
                "<table style='margin-top:4px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
                + "".join(_kdr) + "</table></div>")
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
