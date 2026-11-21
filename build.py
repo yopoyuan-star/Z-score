@@ -946,7 +946,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
 <a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav>
-<div class=hrow>{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則(含保險 A 移動停損、B MA220、④ 左側停損)、空手時一半反1(00632R)一半中華電;加權指數(不含息)2006~2026 近 20 年回測。近 15 年 18.2%、近 10 年 24.5%(回撤 −16.4%);0050 含息每年約再高 3~4%">　近20年年化 16.9%、回撤 −22.5%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半反1(00632R)、一半中華電</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半反1(00632R)、一半中華電),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{crash}{mk_html}</div>
+<div class=hrow>{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則:左側 MA220 乖離分批、④ 左側停損、保險 A/B、空手時一半反1(00632R)一半中華電。加權指數(不含息)回測至 2026-11-20:近 20 年 20.0%(回撤 −17.0%)、近 10 年 26.8%(−16.4%)、2002/8 起 18.3%(−22.5%);00632R 2014 年前為模擬;0050 含息每年約再高 3~4%">　近20年年化 20.0%、回撤 −17.0%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半反1(00632R)、一半中華電</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半反1(00632R)、一半中華電),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{crash}{mk_html}</div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{top5}</div></div>
@@ -961,7 +961,30 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <div class=ctl>顯示列數:<button data-n=60>60</button><button data-n=120>120</button><button data-n=200>200</button>
 <span style="margin-left:14px">Z 交叉欄(5&gt;10 … 150&gt;180):</span><button id=xt>隱藏</button></div>
 <div class="wrap big"><table id=bigtbl><tr>{head}</tr>{body}</table></div><script>{JS}</script><script>{JS2}</script>
-<p class=n>本頁欄位對應 Excel「480天Z-SCORE -2.0」工作表。僅供研究參考,非投資建議。</p></body></html>"""
+<p class=n>本頁欄位對應 Excel「480天Z-SCORE -2.0」工作表。僅供研究參考,非投資建議。</p>
+<div id=tipbox style="display:none;position:fixed;left:8px;right:8px;bottom:12px;z-index:9999;background:#222;color:#fff;font-size:14px;line-height:1.55;padding:10px 34px 10px 12px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.35);white-space:pre-line"></div>
+<script>
+(function(){{
+  // 手機沒有滑鼠:點一下有說明的地方,就在畫面下方顯示說明;再點別處或點說明框關閉
+  var box=document.getElementById('tipbox');
+  var touch=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+  if(!touch) return;
+  document.querySelectorAll('[title]').forEach(function(el){{
+    if(el.closest('a,button,textarea,input,select')) return;
+    el.setAttribute('data-tip',el.getAttribute('title')); el.removeAttribute('title');
+    el.style.cursor='pointer';
+    if(/^(B|SPAN|SMALL)$/.test(el.tagName)){{ el.style.textDecoration='underline dotted'; el.style.textUnderlineOffset='3px'; }}
+  }});
+  document.addEventListener('click',function(e){{
+    var el=e.target.closest('[data-tip]');
+    if(el && !e.target.closest('#tipbox')){{
+      box.textContent=el.getAttribute('data-tip').replace(/;/g,'\\n');
+      box.style.display='block'; e.stopPropagation(); return;
+    }}
+    box.style.display='none';
+  }});
+}})();
+</script></body></html>"""
     os.makedirs("docs", exist_ok=True)
     with open(OUT_HTML, "w", encoding="utf-8") as f:
         f.write(page)
