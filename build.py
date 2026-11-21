@@ -276,9 +276,9 @@ function run(){
  var sig=dv>=D.up?'<b style="color:#d9534f">BUY 訊號(明日收盤買進)</b>':dv<=-D.dn?'<b style="color:#2e9e5b">SELL 訊號(明日收盤賣出)</b>':'通道內,無訊號';
  if(dv>=D.up&&dv0>=D.up)sig='已在 +'+(D.up*100)+'% 之上(延續)';if(dv<=-D.dn&&dv0<=-D.dn)sig='已在 −'+(D.dn*100)+'% 之下(延續)';
  var s3=wr>=3&&wdd<=-0.20&&dv<=-0.10;
- var B=[['最低價跌幅',wdd,D.a_dd,'p'],['最低價乖離',wdv,D.a_dv,'p'],['動態週K',kW[0],D.a_wk,'k'],['動態月K',kM[0],D.a_mk,'k'],['已收完月K',D.mck,D.a_ck,'k'],['Z-SCORE<0',z,0,'z']];
+ var B=[['最低價跌幅',wdd,D.a_dd,'p',D.s_dd],['最低價乖離',wdv,D.a_dv,'p',D.s_dv],['動態週K',kW[0],D.a_wk,'k',D.s_wk],['動態月K',kM[0],D.a_mk,'k',D.s_mk],['已收完月K',D.mck,D.a_ck,'k',D.s_ck],['Z-SCORE<0',z,0,'z',0]];
  var n1=0,n2=0,rows='';B.forEach(function(r){var v=r[1],a=r[2],h1,h2,th;
-  if(r[3]=='p'){th=a*0.85;h1=v<=a;h2=v<=th;}else if(r[3]=='k'){th=a/0.85;h1=v<=a;h2=v<=th;}else{th=null;h1=h2=v<0;}n1+=h1;n2+=h2;
+  if(r[3]!='z'){th=a+r[4];h1=v<=a;h2=v<=th;}else{th=null;h1=h2=v<0;}n1+=h1;n2+=h2;
   var fv=r[3]=='p'?pc(v):r[3]=='z'?v.toFixed(2):v.toFixed(1);rows+='<tr><td>'+r[0]+'</td><td><b>'+fv+'</b></td><td>'+ok(h1)+'</td><td>'+ok(h2)+'</td></tr>';});
  var lv=D.left.map(function(x){return 'MA220−'+(x*100)+'% '+f1(ma*(1-x))+(cc<=ma*(1-x)?' ✔':'');}).join('、');
  var cr=function(k){return k[0]>k[1]?'<b style="color:#d9534f">金叉</b>':'<b style="color:#2e9e5b">死叉</b>';};
@@ -292,8 +292,8 @@ function run(){
   '<div>Z-SCORE <b>'+z.toFixed(2)+'</b>'+(z<0?'(跌破 0)':'')+'</div>'+
   '<div>左側價位:'+lv+'</div>'+
   '<div class=s3 style="background:'+(s3?'#fde2e1':'transparent')+'">🚦 止跌訊號:週K連升 '+Math.min(wr,3)+'/3・跌幅≤−20% '+ok(wdd<=-0.2)+'・乖離≤−10% '+ok(dv<=-0.1)+'→ '+(s3?'<b style="color:#d9534f">成立</b>':'未成立')+'</div>'+
-  '<table><tr><th>落底指標(台股)</th><th>試算</th><th>達平均</th><th>達85%</th></tr>'+rows+'</table>'+
-  '<div style="color:var(--mut)">達成平均 '+n1+'/6・達成85% '+n2+'/6(那斯達克、費半不試算)</div></div>';
+  '<table><tr><th>落底指標(台股)</th><th>試算</th><th>達平均</th><th>達寬鬆</th></tr>'+rows+'</table>'+
+  '<div style="color:var(--mut)">達成平均 '+n1+'/6・達成寬鬆 '+n2+'/6(那斯達克、費半不試算)</div></div>';
 }
 $('cgo').addEventListener('click',run);$('cc').addEventListener('keydown',function(e){if(e.key==='Enter')run();});
 })();
@@ -817,19 +817,20 @@ def main():
     _wave_low = float(m["最低價"].loc[_c250.idxmax():].min())        # 一年高點之後的最低價(盤中)
     _wave_dev = float((m["最低價"] / m["220日均線"] - 1).loc[_c250.idxmax():].min())   # 一年高點之後,最低價對 MA220 的最大負乖離
     _ma_now = float(now["220日均線"])
-    BOTTOM = [("最低價跌幅", _wave_low / _hi1 - 1, -CRASH_AVG["台股"][0], "pct"), ("最低價乖離", _wave_dev, -0.204, "pct"),
-              ("動態週K", float(k["週"]["K"]), 12.4, "k"), ("動態月K", float(k["月"]["K"]), 32.6, "k"), ("已收完月K", float(mc["K"]), 37.8, "k"),
-              ("Z-SCORE<0", float(z), 0.0, "z")]
+    # (名稱, 目前, 平均, 標準差, 種類);寬鬆=平均往「較淺」方向退 1 個標準差
+    BOTTOM = [("最低價跌幅", _wave_low / _hi1 - 1, -CRASH_AVG["台股"][0], CRASH_AVG["台股"][1], "pct"), ("最低價乖離", _wave_dev, -0.204, 0.039, "pct"),
+              ("動態週K", float(k["週"]["K"]), 12.4, 4.5, "k"), ("動態月K", float(k["月"]["K"]), 32.6, 16.0, "k"), ("已收完月K", float(mc["K"]), 37.8, 16.7, "k"),
+              ("Z-SCORE<0", float(z), 0.0, 0.0, "z")]
     for nm in ("那斯達克", "費半"):                            # 美股科技:本波跌幅 vs 一般股災平均
-        if nm in CRASH_DD: BOTTOM.append((f"{nm}跌幅", CRASH_DD[nm], -CRASH_AVG[nm][0], "pct"))
+        if nm in CRASH_DD: BOTTOM.append((f"{nm}跌幅", CRASH_DD[nm], -CRASH_AVG[nm][0], CRASH_AVG[nm][1], "pct"))
     _rows, _n1, _n2 = [], 0, 0
-    for nm, v, avg, kind in BOTTOM:
+    for nm, v, avg, sd, kind in BOTTOM:
         if kind == "pct":
-            th = avg * 0.85; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1%}"
+            th = avg + sd; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1%}"
         elif kind == "z":
             th = None; hit = near = v < 0; f = lambda x: f"{x:.2f}"
         else:
-            th = avg / 0.85; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1f}"
+            th = avg + sd; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1f}"
         _n1 += hit; _n2 += near
         _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{'&lt;0' if kind == 'z' else f(avg)}</td><td>{'—' if th is None else f(th)}</td>"
                      f"<td class={'y' if hit else 'n'}>{'✔' if hit else '—'}</td><td class={'y' if near else 'n'}>{'✔' if near else '—'}</td></tr>")
@@ -859,11 +860,12 @@ def main():
                   f"<b>🚦 止跌訊號</b> 週K連升 <b>{min(_wr, 3)}/3</b> 日・跌幅≤−20% {_ok(_wdd <= -0.20)}・乖離≤−10% {_ok(_dvS.iloc[-1] <= -0.10)}"
                   f"<br>嚴格(今日乖離) {_ok(_s1)}　寬鬆(近5日乖離) {_ok(_s2)}</div>")
     calc = calc_html(df, mc["K"], {"up": UP_BAND, "dn": DN_BAND, "left": [x for x, _ in LEFT_MA],
-                                   "a_dd": -CRASH_AVG["台股"][0], "a_dv": -0.204, "a_wk": 12.4, "a_mk": 32.6, "a_ck": 37.8})
+                                   "a_dd": -CRASH_AVG["台股"][0], "a_dv": -0.204, "a_wk": 12.4, "a_mk": 32.6, "a_ck": 37.8,
+                                   "s_dd": CRASH_AVG["台股"][1], "s_dv": 0.039, "s_wk": 4.5, "s_mk": 16.0, "s_ck": 16.7})
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
-               "85% 門檻:跌幅與乖離=平均×0.85;月 K 越低越接近底,門檻=平均÷0.85。僅供參考,長空頭會遠超過平均'>"
-               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成85% {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
-               "<div class=mkg><div><table><tr><th>指標</th><th>目前</th><th>平均</th><th>85%</th><th>達平均</th><th>達85%</th></tr>"
+               "寬鬆門檻=平均往較淺方向退 1 個標準差(跌幅/乖離=平均+1σ,K 值=平均+1σ)。僅供參考,長空頭會遠超過平均'>"
+               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
+               "<div class=mkg><div><table><tr><th>指標</th><th>目前</th><th>平均</th><th>寬鬆</th><th>達平均</th><th>達寬鬆</th></tr>"
                + "".join(_rows) + "</table></div><div>"
                + _stop_html +
                "<table style='margin-top:4px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
