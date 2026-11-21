@@ -231,6 +231,75 @@ def top5_html():
             + "".join(tr) + "</table></div>")
 
 
+def calc_html(df, mc_k, consts):
+    """盤中試算:把最近 1600 個交易日的最高/最低/收盤放進網頁,輸入假設收盤價後在瀏覽器重算"""
+    import json
+    x = df.iloc[-1600:]
+    data = {"d": [t.strftime("%Y-%m-%d") for t in x.index], "h": [round(v, 2) for v in x.High], "l": [round(v, 2) for v in x.Low],
+            "c": [round(v, 2) for v in x.Close], "mck": round(float(mc_k), 1), **consts}
+    return ("<div class=calc><b>🧮 盤中試算</b><span>(輸入假設今日收盤,立即重算;不影響正式數字)</span>"
+            "<div class=cin><label>假設收盤 <input id=cc type=number inputmode=decimal step=1></label>"
+            "<label>最高 <input id=ch type=number inputmode=decimal placeholder=可不填></label>"
+            "<label>最低 <input id=cl type=number inputmode=decimal placeholder=可不填></label>"
+            "<button id=cgo>試算</button></div><div id=cout></div>"
+            "<script>window.CALC=" + json.dumps(data, separators=(",", ":")) + ";</script>"
+            + CALC_JS + "</div>")
+
+
+CALC_JS = r"""<script>
+(function(){
+var D=window.CALC, $=function(i){return document.getElementById(i)};
+$('cc').placeholder=Math.round(D.c[D.c.length-1]);$('cc').title='昨收 '+D.c[D.c.length-1].toLocaleString();
+function kd(h,l,c){var k=[],d=[],pk=50,pd=50;for(var i=0;i<c.length;i++){var s=Math.max(0,i-8),hh=-1e18,ll=1e18;for(var j=s;j<=i;j++){if(h[j]>hh)hh=h[j];if(l[j]<ll)ll=l[j];}
+ var r=hh>ll?(c[i]-ll)/(hh-ll)*100:50;pk=2/3*pk+r/3;pd=2/3*pd+pk/3;k.push(pk);d.push(pd);}return [k[k.length-1],d[d.length-1]];}
+function dyn(H,L,C,bar,win){var n=C.length;if(win&&n>win){H=H.slice(n-win);L=L.slice(n-win);C=C.slice(n-win);n=win;}
+ var m=Math.floor(n/bar)*bar,o=n-m,h=[],l=[],c=[];for(var b=0;b<m/bar;b++){var hh=-1e18,ll=1e18;for(var j=o+b*bar;j<o+b*bar+bar;j++){if(H[j]>hh)hh=H[j];if(L[j]<ll)ll=L[j];}h.push(hh);l.push(ll);c.push(C[o+b*bar+bar-1]);}
+ return kd(h,l,c);}
+function mean(a){var s=0;for(var i=0;i<a.length;i++)s+=a[i];return s/a.length;}
+function f1(x){return x.toLocaleString(undefined,{maximumFractionDigits:0});}
+function pc(x){return (x>=0?'+':'')+(x*100).toFixed(1)+'%';}
+function ok(b){return b?'<b style="color:#d9534f">✔</b>':'<span style="color:var(--mut)">—</span>';}
+function run(){
+ var cc=parseFloat($('cc').value);if(!(cc>0)){$('cout').innerHTML='<span style="color:#d9534f">請輸入假設收盤價</span>';return;}
+ var pc0=D.c[D.c.length-1],hh=parseFloat($('ch').value),ll=parseFloat($('cl').value);
+ if(!(hh>0))hh=Math.max(cc,pc0);if(!(ll>0))ll=Math.min(cc,pc0);hh=Math.max(hh,cc);ll=Math.min(ll,cc);
+ var H=D.h.concat([hh]),L=D.l.concat([ll]),C=D.c.concat([cc]),n=C.length;
+ var kD=dyn(H,L,C,1,0),kW=dyn(H,L,C,5,1400),kM=dyn(H,L,C,22,0);
+ var w1=dyn(H.slice(0,n-1),L.slice(0,n-1),C.slice(0,n-1),5,1400)[0],w2=dyn(H.slice(0,n-2),L.slice(0,n-2),C.slice(0,n-2),5,1400)[0],w3=dyn(H.slice(0,n-3),L.slice(0,n-3),C.slice(0,n-3),5,1400)[0];
+ var wr=0;if(kW[0]>w1){wr=1;if(w1>w2){wr=2;if(w2>w3)wr=3;}}
+ var mkY=dyn(H.slice(0,n-1),L.slice(0,n-1),C.slice(0,n-1),22,0)[0];
+ var ma=mean(C.slice(n-220)),ma0=mean(D.c.slice(D.c.length-220)),dv=cc/ma-1,dv0=pc0/ma0-1;
+ var z480=C.slice(n-480),mu=mean(z480),sd=0;for(var i=0;i<480;i++)sd+=(z480[i]-mu)*(z480[i]-mu);sd=Math.sqrt(sd/479);var z=(cc-mu)/sd;
+ var c250=C.slice(n-250),hi=-1,hiI=0;for(var i=0;i<250;i++)if(c250[i]>hi){hi=c250[i];hiI=n-250+i;}
+ var wl=1e18,wdv=9;for(var i=hiI;i<n;i++){if(L[i]<wl)wl=L[i];var mi=mean(C.slice(Math.max(0,i-219),i+1));if(L[i]/mi-1<wdv)wdv=L[i]/mi-1;}
+ var wdd=wl/hi-1;
+ var sig=dv>=D.up?'<b style="color:#d9534f">BUY 訊號(明日收盤買進)</b>':dv<=-D.dn?'<b style="color:#2e9e5b">SELL 訊號(明日收盤賣出)</b>':'通道內,無訊號';
+ if(dv>=D.up&&dv0>=D.up)sig='已在 +'+(D.up*100)+'% 之上(延續)';if(dv<=-D.dn&&dv0<=-D.dn)sig='已在 −'+(D.dn*100)+'% 之下(延續)';
+ var s3=wr>=3&&wdd<=-0.20&&dv<=-0.10;
+ var B=[['最低價跌幅',wdd,D.a_dd,'p'],['最低價乖離',wdv,D.a_dv,'p'],['動態週K',kW[0],D.a_wk,'k'],['動態月K',kM[0],D.a_mk,'k'],['已收完月K',D.mck,D.a_ck,'k'],['Z-SCORE<0',z,0,'z']];
+ var n1=0,n2=0,rows='';B.forEach(function(r){var v=r[1],a=r[2],h1,h2,th;
+  if(r[3]=='p'){th=a*0.85;h1=v<=a;h2=v<=th;}else if(r[3]=='k'){th=a/0.85;h1=v<=a;h2=v<=th;}else{th=null;h1=h2=v<0;}n1+=h1;n2+=h2;
+  var fv=r[3]=='p'?pc(v):r[3]=='z'?v.toFixed(2):v.toFixed(1);rows+='<tr><td>'+r[0]+'</td><td><b>'+fv+'</b></td><td>'+ok(h1)+'</td><td>'+ok(h2)+'</td></tr>';});
+ var lv=D.left.map(function(x){return 'MA220−'+(x*100)+'% '+f1(ma*(1-x))+(cc<=ma*(1-x)?' ✔':'');}).join('、');
+ var cr=function(k){return k[0]>k[1]?'<b style="color:#d9534f">金叉</b>':'<b style="color:#2e9e5b">死叉</b>';};
+ $('cout').innerHTML='<div class=cres>'+
+  '<div>假設收盤 <b>'+f1(cc)+'</b>('+pc(cc/pc0-1)+')・最高 '+f1(hh)+'・最低 '+f1(ll)+'</div>'+
+  '<table><tr><th></th><th>K / D</th><th>狀態</th></tr>'+
+  '<tr><td>動態日KD</td><td>'+kD[0].toFixed(1)+' / '+kD[1].toFixed(1)+'</td><td>'+cr(kD)+'</td></tr>'+
+  '<tr><td>動態週KD</td><td>'+kW[0].toFixed(1)+' / '+kW[1].toFixed(1)+'</td><td>'+cr(kW)+'・K '+(kW[0]>w1?'↑':'↓')+' 連升 '+wr+' 日</td></tr>'+
+  '<tr><td>動態月KD</td><td>'+kM[0].toFixed(1)+' / '+kM[1].toFixed(1)+'</td><td>'+cr(kM)+'・K '+(kM[0]>mkY?'↑':'↓')+'</td></tr></table>'+
+  '<div>MA220 '+f1(ma)+'・乖離 <b>'+pc(dv)+'</b>・'+sig+'</div>'+
+  '<div>Z-SCORE <b>'+z.toFixed(2)+'</b>'+(z<0?'(跌破 0)':'')+'</div>'+
+  '<div>左側價位:'+lv+'</div>'+
+  '<div class=s3 style="background:'+(s3?'#fde2e1':'transparent')+'">🚦 止跌訊號:週K連升 '+Math.min(wr,3)+'/3・跌幅≤−20% '+ok(wdd<=-0.2)+'・乖離≤−10% '+ok(dv<=-0.1)+'→ '+(s3?'<b style="color:#d9534f">成立</b>':'未成立')+'</div>'+
+  '<table><tr><th>落底指標(台股)</th><th>試算</th><th>達平均</th><th>達85%</th></tr>'+rows+'</table>'+
+  '<div style="color:var(--mut)">達成平均 '+n1+'/6・達成85% '+n2+'/6(那斯達克、費半不試算)</div></div>';
+}
+$('cgo').addEventListener('click',run);$('cc').addEventListener('keydown',function(e){if(e.key==='Enter')run();});
+})();
+</script>"""
+
+
 def crash_avg(d):
     """六次一般股災:窗口內最低價 ÷ 之前一年內最高收盤 − 1,回傳 (平均跌幅, 標準差)"""
     v = []
@@ -789,6 +858,8 @@ def main():
                   "title='跌幅=近一年最高收盤後的最低價(盤中)。回測 2009~2026:嚴格版 8 次訊號(含 2025/04/25),62% 之後 60 日內沒再跌超過 3%,20 日後平均 +6.1%、勝率 88%;寬鬆版 9 次,67%。訊號通常比最低點晚 2 天~2 週'>"
                   f"<b>🚦 止跌訊號</b> 週K連升 <b>{min(_wr, 3)}/3</b> 日・跌幅≤−20% {_ok(_wdd <= -0.20)}・乖離≤−10% {_ok(_dvS.iloc[-1] <= -0.10)}"
                   f"<br>嚴格(今日乖離) {_ok(_s1)}　寬鬆(近5日乖離) {_ok(_s2)}</div>")
+    calc = calc_html(df, mc["K"], {"up": UP_BAND, "dn": DN_BAND, "left": [x for x, _ in LEFT_MA],
+                                   "a_dd": -CRASH_AVG["台股"][0], "a_dv": -0.204, "a_wk": 12.4, "a_mk": 32.6, "a_ck": 37.8})
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
                "85% 門檻:跌幅與乖離=平均×0.85;月 K 越低越接近底,門檻=平均÷0.85。僅供參考,長空頭會遠超過平均'>"
                f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成85% {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
@@ -933,7 +1004,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1200px;margin:0 
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card>span.ct{{font-size:15px;font-weight:800;padding-bottom:4px;margin-bottom:6px;border-bottom:2px solid;line-height:1.3}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
-.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.mkg{{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}.mkg>div{{flex:0 1 auto;min-width:0}}.mkb{{flex:0 1 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.pkb{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:11.5px;width:0;min-width:100%;line-height:1.5}}.t5b{{margin-top:8px;box-sizing:border-box;overflow-x:auto;border:2px solid #c0392b;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.t5b table{{font-size:11px;margin-top:2px;border-collapse:collapse}}.t5b th,.t5b td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.t5b td:first-child,.t5b th:first-child{{text-align:left}}.t5b small{{color:var(--mut);margin-left:3px;font-size:10px}}.crash{{flex:0 0 auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-wrap:wrap;margin:-6px 0 -4px}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
+.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.mkg{{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}.mkg>div{{flex:0 1 auto;min-width:0}}.mkb{{flex:0 1 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.pkb{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:11.5px;width:0;min-width:100%;line-height:1.5}}.calc{{margin-top:8px;box-sizing:border-box;border:2px solid #16a085;border-radius:8px;padding:4px 9px;background:var(--card);font-size:12px}}.calc span{{color:var(--mut);font-size:11px;margin-left:4px}}.calc .cin{{display:flex;gap:4px 10px;flex-wrap:wrap;margin:5px 0;align-items:center}}.calc label{{width:auto!important;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;margin:0;font-size:12px;white-space:nowrap}}.calc input{{box-sizing:border-box;width:76px!important;min-width:0;flex:0 0 76px;padding:3px 5px;font-size:13px;border:1px solid var(--line);border-radius:5px}}.calc button{{padding:4px 12px;border-radius:5px;border:1px solid #16a085;background:#16a085;color:#fff;font-weight:700}}.cres div{{margin:3px 0;line-height:1.45}}.cres table{{border-collapse:collapse;margin:3px 0;font-size:11.5px}}.cres th,.cres td{{padding:1px 5px;border-bottom:1px solid var(--line);white-space:nowrap}}.cres .s3{{padding:2px 5px;border-radius:5px}}.t5b{{margin-top:8px;box-sizing:border-box;overflow-x:auto;border:2px solid #c0392b;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.t5b table{{font-size:11px;margin-top:2px;border-collapse:collapse}}.t5b th,.t5b td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.t5b td:first-child,.t5b th:first-child{{text-align:left}}.t5b small{{color:var(--mut);margin-left:3px;font-size:10px}}.crash{{flex:0 0 auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-wrap:wrap;margin:-6px 0 -4px}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
@@ -949,7 +1020,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <div class=hrow>{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則:左側 MA220 乖離分批、④ 左側停損、保險 A/B、空手時一半反1(00632R)一半中華電。加權指數(不含息)回測至 2026-11-20:近 20 年 20.0%(回撤 −17.0%)、近 10 年 26.8%(−16.4%)、2002/8 起 18.3%(−22.5%);00632R 2014 年前為模擬;0050 含息每年約再高 3~4%">　近20年年化 20.0%、回撤 −17.0%</span><div title="6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半反1(00632R)、一半中華電</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出(一半反1(00632R)、一半中華電),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{crash}{mk_html}</div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
-</div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{top5}</div></div>
+</div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{top5}{calc}</div></div>
 {ins_html(cyc)}
 {trend_html(trend, m.index[-1])}
 <div class=cards>{cards_html}</div>
