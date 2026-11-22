@@ -832,7 +832,9 @@ def main():
     # (名稱, 目前, 平均, 標準差, 種類);寬鬆=平均往「較淺」方向退 1 個標準差
     BOTTOM = [("最低價跌幅", _wave_low / _hi1 - 1, -CRASH_AVG["台股"][0], CRASH_AVG["台股"][1], "pct"), ("最低價乖離", _wave_dev, -0.204, 0.039, "pct"),
               ("動態週K", float(k["週"]["K"]), 12.4, 4.5, "k"), ("動態月K", float(k["月"]["K"]), 32.6, 16.0, "k"), ("已收完月K", float(mc["K"]), 37.8, 16.7, "k"),
-              ("Z-SCORE<0", float(z), 0.0, 0.0, "z")]
+              ("Z-SCORE<0", float(z), 0.0, 0.0, "z"),
+              ("MA220下彎", float(m["220日均線"].iloc[-1] / m["220日均線"].iloc[-21] - 1), 0.0,
+               float(m["220日均線"].iloc[-1] - m["220日均線"].iloc[-2]), "bend")]
     for nm in ("那斯達克", "費半"):                            # 美股科技:本波跌幅 vs 一般股災平均
         if nm in CRASH_DD: BOTTOM.append((f"{nm}跌幅", CRASH_DD[nm], -CRASH_AVG[nm][0], CRASH_AVG[nm][1], "pct"))
     _rows, _n1, _n2 = [], 0, 0
@@ -841,10 +843,12 @@ def main():
             th = avg + sd; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1%}"
         elif kind == "z":
             th = None; hit = near = v < 0; f = lambda x: f"{x:.2f}"
+        elif kind == "bend":                                # 平均=20 日斜率 < 0(已下彎);寬鬆=今天 MA220 比昨天低(開始下彎)
+            th = None; hit, near = v < 0, sd < 0; f = lambda x: f"{x:+.2%}"
         else:
             th = avg + sd; hit, near = v <= avg, v <= th; f = lambda x: f"{x:.1f}"
         _n1 += hit; _n2 += near
-        _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{'&lt;0' if kind == 'z' else f(avg)}</td><td>{'—' if th is None else f(th)}</td>"
+        _rows.append(f"<tr><td>{nm}</td><td style='font-weight:700'>{f(v)}</td><td>{'&lt;0' if kind in ('z', 'bend') else f(avg)}</td><td>{'日降' if kind == 'bend' else '—' if th is None else f(th)}</td>"
                      f"<td class={'y' if hit else 'n'}>{'✔' if hit else '—'}</td><td class={'y' if near else 'n'}>{'✔' if near else '—'}</td></tr>")
     def _rise(col):                                        # K 值比前一日高/低,連續幾日
         d = m[col].diff().dropna().to_numpy(); up = d[-1] > 0; n = 0
@@ -874,7 +878,7 @@ def main():
     calc = calc_html(df, mc["K"], {"up": UP_BAND, "dn": DN_BAND, "left": [x for x, _ in LEFT_MA],
                                    "a_dd": -CRASH_AVG["台股"][0], "a_dv": -0.204, "a_wk": 12.4, "a_mk": 32.6, "a_ck": 37.8,
                                    "s_dd": CRASH_AVG["台股"][1], "s_dv": 0.039, "s_wk": 4.5, "s_mk": 16.0, "s_ck": 16.7})
-    mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
+    mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。MA220下彎:目前=20 日斜率,達平均=斜率<0,達寬鬆=今天均線比昨天低。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
                "寬鬆門檻=平均往較淺方向退 1 個標準差(跌幅/乖離=平均+1σ,K 值=平均+1σ)。僅供參考,長空頭會遠超過平均'>"
                f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
                "<div class=mkg><div><table><tr><th>指標</th><th>目前</th><th>平均</th><th>寬鬆</th><th>達平均</th><th>達寬鬆</th></tr>"
