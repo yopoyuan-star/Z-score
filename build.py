@@ -320,6 +320,55 @@ def wave_dd(d):
     return float(lo.min() / c.max() - 1), hd, lo.idxmin()
 
 
+ALT = [("BTC-USD", "比特幣", "#f39c12", 0), ("GC%3DF", "黃金", "#c9a227", 1)]   # Yahoo 代號、名稱、顏色、價格小數位
+
+
+def alt_html():
+    """比特幣、黃金:近 1.5 年日線收盤 + MA60 + MA200,以及近 1/3/6 個月報酬率"""
+    import time
+    rows, charts = [], []
+    for sym, nm, col, dp in ALT:
+        try:
+            d = yahoo_hl(sym, retries=1, start=int(time.time()) - 3 * 365 * 86400, min_len=300)
+            if d is None or len(d) < 260: continue
+            c = d.Close; ma60 = c.rolling(60).mean(); ma200 = c.rolling(200).mean()
+            last = c.index[-1]; px = float(c.iloc[-1])
+            def ret(days):
+                b = c[c.index <= last - pd.Timedelta(days=days)]
+                return px / float(b.iloc[-1]) - 1 if len(b) else None
+            rs = [ret(30), ret(91), ret(182)]
+            cell = lambda r: "<td>—</td>" if r is None else f"<td style='color:{'#d9534f' if r >= 0 else '#2e9e5b'}'>{r:+.1%}</td>"
+            pos = lambda ma: "—" if pd.isna(ma.iloc[-1]) else ("<b style='color:#d9534f'>上</b>" if px >= ma.iloc[-1] else "<b style='color:#2e9e5b'>下</b>")
+            rows.append(f"<tr><td>{nm}</td><td>{px:,.{dp}f}</td>{''.join(cell(r) for r in rs)}<td>{pos(ma60)}</td><td>{pos(ma200)}</td></tr>")
+            w = c.index >= last - pd.Timedelta(days=548)                    # 近 1.5 年
+            cc, a6, a2 = c[w], ma60[w], ma200[w]
+            W_, H_, L_, R_, T_, B_ = 340, 112, 40, 6, 14, 13
+            allv = pd.concat([cc, a6.dropna(), a2.dropna()]); lo, hi = float(allv.min()), float(allv.max()); pad = (hi - lo) * .05; lo -= pad; hi += pad
+            n = len(cc); x_ = lambda i: L_ + (W_ - L_ - R_) * i / (n - 1)
+            y_ = lambda v: T_ + (H_ - T_ - B_) * (hi - v) / (hi - lo)
+            pl = lambda ser, colr, wd: ("<polyline points='" + " ".join(f"{x_(i):.1f},{y_(v):.1f}" for i, v in enumerate(ser) if not pd.isna(v))
+                                       + f"' fill='none' stroke='{colr}' stroke-width='{wd}'/>")
+            fmt = lambda v: f"{v / 1000:,.0f}k" if v >= 10000 else f"{v:,.0f}"
+            tk = "".join(f"<line x1='{L_}' x2='{W_ - R_}' y1='{y_(v):.1f}' y2='{y_(v):.1f}' stroke='var(--line)' stroke-width='.7'/>"
+                         f"<text x='{L_ - 3}' y='{y_(v) + 3:.1f}' font-size='9' fill='var(--mut)' text-anchor='end'>{fmt(v)}</text>"
+                         for v in (lo + (hi - lo) * k / 4 for k in (0.4, 2, 3.6)))
+            xl = "".join(f"<text x='{x_(i):.1f}' y='{H_ - 2}' font-size='9' fill='var(--mut)' text-anchor='{an}'>{cc.index[i]:%y/%m}</text>"
+                         for i, an in ((0, "start"), (n // 2, "middle"), (n - 1, "end")))
+            cx, cy = x_(n - 1), y_(px)
+            charts.append(f"<div class=altc title='{nm} 近 1.5 年日線:{col}=收盤、藍=MA60、紫=MA200。資料:Yahoo Finance(美元;黃金為 COMEX 期貨 GC=F;收盤日 {last:%Y-%m-%d})'>"
+                          f"<svg viewBox='0 0 {W_} {H_}' width='100%' style='display:block;max-width:{W_}px'>{tk}{xl}"
+                          f"<text x='{L_}' y='10' font-size='10.5' font-weight='700' fill='var(--fg)'>{nm}</text>"
+                          f"<text x='{W_ - R_}' y='10' font-size='9.5' text-anchor='end'><tspan fill='{col}'>━收盤</tspan> <tspan fill='#1a5fb4'>━MA60</tspan> <tspan fill='#8e44ad'>━MA200</tspan></text>"
+                          + pl(a2, "#8e44ad", 1.3) + pl(a6, "#1a5fb4", 1.3) + pl(cc, col, 1.6)
+                          + f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='3' fill='{col}' stroke='#fff' stroke-width='1'/></svg></div>")
+        except Exception as e:
+            print("BTC/黃金 失敗", sym, e)
+    if not rows: return ""
+    return ("<div class=altb><b>₿ 比特幣・黃金</b> <span>美元・近 1.5 年日線</span>"
+            "<table><tr><th></th><th>價格</th><th>1月</th><th>3月</th><th>6月</th><th>MA60</th><th>MA200</th></tr>"
+            + "".join(rows) + "</table>" + "".join(charts) + "</div>")
+
+
 def crash_html(tw):
     rows = []
     for nm in CRASH_AVG:
@@ -784,6 +833,7 @@ def main():
     chg_html = f"<small style='color:{chg_col};font-size:15px;font-weight:600'>{arrow} {abs(chg):,.2f}　({chg_pct:+.2%})</small>"
     ma_lab, ma_n, ma_note, ma_today = ma200_state(m)
     top5 = top5_html()
+    alt = alt_html()
     crash = crash_html(pd.DataFrame({"Low": m["最低價"], "Close": m["台股收盤價"], "MA": m["220日均線"]}))
     # 標題旁:MA220 負乖離 −15%~−45% 對應指數(歷史:一般股災底約 −20~−23%,2000/2008 大空頭 −41~−45%)
     _ma, _cl = float(now["220日均線"]), float(m["台股收盤價"].iloc[-1])
@@ -838,11 +888,43 @@ def main():
                    f" ≈ <b>{_ma * (1 + _hm - _hs):,.0f}~{_ma * (1 + _hm + _hs):,.0f}</b></div>")
     except Exception as e:
         print("高檔區計算失敗", e); hi_zone = ""
+    # 乖離走勢圖(近 1 個月):平均高檔(股災前高點)、平均低檔(股災期間最低收盤乖離)、MA220、目前位置
+    try:
+        _dv = (m["台股收盤價"] / m["220日均線"] - 1)
+        _lv = []
+        for _a, _b in CRASH_WIN:
+            _lv.append(float(_dv.loc[_a:_b].min()))
+        _lm, _ls = float(np.mean(_lv)), float(np.std(_lv, ddof=1))
+        _ser = _dv.iloc[-22:]; _vals = [float(x) for x in _ser]
+        _ymax = max(_hm + _hs, max(_vals)) + 0.02; _ymin = min(_lm - _ls, min(_vals)) - 0.02
+        W_, H_, L_, R_, T_, B_ = 300, 120, 30, 46, 6, 14
+        _x = lambda i: L_ + (W_ - L_ - R_) * i / (len(_vals) - 1)
+        _y = lambda v: T_ + (H_ - T_ - B_) * (_ymax - v) / (_ymax - _ymin)
+        _band = lambda lo, hi, col: f"<rect x='{L_}' y='{_y(hi):.1f}' width='{W_ - L_ - R_}' height='{_y(lo) - _y(hi):.1f}' fill='{col}' opacity='.13'/>"
+        _hl = lambda v, col, lab, dash="4 3": (f"<line x1='{L_}' x2='{W_ - R_}' y1='{_y(v):.1f}' y2='{_y(v):.1f}' stroke='{col}' stroke-width='1.2' stroke-dasharray='{dash}'/>"
+                                               f"<text x='{W_ - R_ + 3}' y='{_y(v) + 3.5:.1f}' font-size='9.5' fill='{col}'>{lab}</text>")
+        _pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(_vals))
+        _cv = _vals[-1]
+        _ccol = "#d9534f" if _cv >= _hm else "#2e9e5b" if _cv <= _lm else "#e67e22"
+        _ticks = "".join(f"<text x='{L_ - 3}' y='{_y(t) + 3:.1f}' font-size='9' fill='var(--mut)' text-anchor='end'>{t:+.0%}</text>"
+                         for t in (0.2, 0.1, 0.0, -0.1, -0.2) if _ymin <= t <= _ymax)
+        spark = (f"<div class=spk title='近 22 個交易日收盤對 MA220 的乖離。紅色=股災前高點平均 {_hm:+.1%}(淡紅帶 ±1σ);綠色=股災期間最低乖離平均 {_lm:+.1%}(淡綠帶 ±1σ);灰線=MA220;橘點=目前'>"
+                 f"<svg viewBox='0 0 {W_} {H_}' width='100%' style='display:block;max-width:{W_}px'>"
+                 + _band(_hm - _hs, _hm + _hs, "#d9534f") + _band(_lm - _ls, _lm + _ls, "#2e9e5b") + _ticks
+                 + _hl(_hm, "#d9534f", f"高檔{_hm:+.0%}") + _hl(_lm, "#2e9e5b", f"低檔{_lm:+.0%}") + _hl(0.0, "#888", "MA220", "2 2")
+                 + f"<polyline points='{_pts}' fill='none' stroke='#1a5fb4' stroke-width='1.8'/>"
+                 + f"<circle cx='{_x(len(_vals) - 1):.1f}' cy='{_y(_cv):.1f}' r='3.6' fill='{_ccol}' stroke='#fff' stroke-width='1'/>"
+                 + f"<text x='{_x(len(_vals) - 1) - 4:.1f}' y='{_y(_cv) - 6:.1f}' font-size='10' font-weight='700' fill='{_ccol}' text-anchor='end'>現在 {_cv:+.1%}</text>"
+                 + f"<text x='{L_}' y='{H_ - 2}' font-size='9' fill='var(--mut)'>{_ser.index[0]:%m/%d}</text>"
+                 + f"<text x='{W_ - R_}' y='{H_ - 2}' font-size='9' fill='var(--mut)' text-anchor='end'>{_ser.index[-1]:%m/%d}</text>"
+                 + "</svg></div>")
+    except Exception as e:
+        print("乖離走勢圖失敗", e); spark = ""
     dev_html = ("<div class=devb title='乖離率 = (當日收盤價 − MA220) ÷ MA220 × 100%;價位 = MA220 × (1 + 乖離率);歷史最大負乖離:2015 −19.5%、2022 −21.6%、2020 −21.7%、2025 −22.7%、2000 −40.9%、2008 −44.5%'>"
                 f"<b class=t>📉 MA220 乖離</b> <span class=x>現在 {_cl / _ma - 1:+.1%}</span><div class=g>"
                 + "".join(f"<div title='{_tip.get(x, '')}'><i>{x:.0%}</i><b{' class=x' if _cl <= _ma * (1 + x) else ''}>{_ma * (1 + x):,.0f}</b></div>"
                           for x in (-0.15, -0.20, -0.25, -0.30, -0.35, -0.40, -0.45))
-                + "<div><i>股災底</i><i>−20~23%</i></div></div>" + hi_zone + ma_run + "</div>")
+                + "<div><i>股災底</i><i>−20~23%</i></div></div>" + hi_zone + spark + ma_run + "</div>")
     # 明日收盤關鍵點位:明天 MA220 = (近 219 天 + 明日收盤)/220,解出剛好等於 MA220×(1+UP)/(1−DN) 的收盤價
     _c = m["台股收盤價"]
     _base = float(_c.iloc[-219:].sum())
@@ -930,6 +1012,41 @@ def main():
                     f"<td>{run_txt(n) or '—'}</td><td>{_rise(n + 'K')}</td><td class={'y' if g else 'n'}>{'✔' if g else '—'}</td></tr>")
     # 止跌訊號(2009~2026 回測):動態週K連續上升 3 日 + 距高點跌幅 ≤ −20% + MA220 乖離 ≤ −10%
     #   嚴格=三項同一天成立(5 次,4 次之後 60 日沒再跌超過 3%);寬鬆=跌幅/乖離近 5 日內曾達標(9 次,含 2025/04/25)
+    def kd_spark(nm, low_m, low_s, note):
+        """近 22 個交易日動態 K/D:只標股災期間 K 最低值的平均與寬鬆(平均+1σ),加上目前 K"""
+        try:
+            K_ = [float(x) for x in m[nm + "K"].iloc[-22:]]; D_ = [float(x) for x in m[nm + "D"].iloc[-22:]]; ix = m.index[-22:]
+            W_, H_, L_, R_, T_, B_ = 300, 104, 24, 50, 5, 13
+            x_ = lambda i: L_ + (W_ - L_ - R_) * i / (len(K_) - 1)
+            y_ = lambda v: T_ + (H_ - T_ - B_) * (100 - v) / 100
+            band = lambda lo, hi, col: f"<rect x='{L_}' y='{y_(hi):.1f}' width='{W_ - L_ - R_}' height='{y_(lo) - y_(hi):.1f}' fill='{col}' opacity='.13'/>"
+            hl = lambda v, col, lab, dash="4 3", ly=None: (f"<line x1='{L_}' x2='{W_ - R_}' y1='{y_(v):.1f}' y2='{y_(v):.1f}' stroke='{col}' stroke-width='1.1' stroke-dasharray='{dash}'/>"
+                                                  + (f"<text x='{W_ - R_ + 3}' y='{(y_(v) if ly is None else ly) + 3.5:.1f}' font-size='9.5' fill='{col}'>{lab}</text>" if lab else ""))
+            def apart(va, vb, gap=10.5):              # 兩條線太近時把標籤上下錯開,避免文字重疊
+                ya, yb = y_(va), y_(vb)
+                if yb - ya >= gap: return ya, yb
+                mid = (ya + yb) / 2; return mid - gap / 2, mid + gap / 2
+            pl = lambda arr, col, w: f"<polyline points='{' '.join(f'{x_(i):.1f},{y_(v):.1f}' for i, v in enumerate(arr))}' fill='none' stroke='{col}' stroke-width='{w}'/>"
+            lw = low_m + low_s; la, lb = apart(lw, low_m)
+            cv = K_[-1]
+            cc, st = ("#1e7d46", "達平均") if cv <= low_m else ("#2e9e5b", "達寬鬆") if cv <= lw else ("#e67e22", f"距寬鬆 {cv - lw:.1f}")
+            tk = "".join(f"<text x='{L_ - 3}' y='{y_(t) + 3:.1f}' font-size='9' fill='var(--mut)' text-anchor='end'>{t}</text>" for t in (100, 80, 50, 20, 0))
+            cx, cy = x_(len(K_) - 1), y_(cv)
+            ty = cy - 6 if cy > 16 else cy + 13
+            return (f"<div class=kspk title='動態{nm}KD 近 22 個交易日:藍=K、灰=D;綠實線=股災期間 K 最低值平均 {low_m:.1f}、淡綠虛線=寬鬆 {lw:.1f}(平均+1σ;{note});淡綠帶=寬鬆以下;點=目前 K'>"
+                    f"<b>動態{nm}K</b> <span style='color:{cc};font-weight:700'>{cv:.1f}</span> <small>({st}・D {D_[-1]:.1f}・{'金叉' if cv > D_[-1] else '死叉'})</small>"
+                    f"<svg viewBox='0 0 {W_} {H_}' width='100%' style='display:block;max-width:{W_}px'>"
+                    + band(0, lw, "#2e9e5b") + tk
+                    + hl(lw, "#7cc49a", f"寬鬆{lw:.0f}", "2 3", la) + hl(low_m, "#2e9e5b", f"平均{low_m:.0f}", "4 3", lb) + hl(50, "#888", "", "2 2")
+                    + pl(D_, "#999", 1.2) + pl(K_, "#1a5fb4", 1.8)
+                    + f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='3.4' fill='{cc}' stroke='#fff' stroke-width='1'/>"
+                    + f"<text x='{cx - 4:.1f}' y='{ty:.1f}' font-size='10' font-weight='700' fill='{cc}' stroke='var(--bg)' stroke-width='3' paint-order='stroke' text-anchor='end'>現在 {cv:.1f}</text>"
+                    + f"<text x='{L_}' y='{H_ - 2}' font-size='9' fill='var(--mut)'>{ix[0]:%m/%d}</text>"
+                    + f"<text x='{W_ - R_}' y='{H_ - 2}' font-size='9' fill='var(--mut)' text-anchor='end'>{ix[-1]:%m/%d}</text></svg></div>")
+        except Exception as e:
+            print("KD 走勢圖失敗", nm, e); return ""
+    kd_charts = ("<div class=kchs>" + kd_spark("週", 12.4, 4.5, "急跌≈11、緩跌≈13")
+                 + kd_spark("月", 32.6, 16.0, "急跌≈46、緩跌≈19") + "</div>")
     _wk = m["週K"].to_numpy(); _wr = 0
     for _i in range(len(_wk) - 1, 0, -1):
         if _wk[_i] > _wk[_i - 1]: _wr += 1
@@ -938,7 +1055,7 @@ def main():
     _s1 = _wr >= 3 and _wdd <= -0.20 and _dvS.iloc[-1] <= -0.10
     _s2 = _wr >= 3 and _wdd <= -0.20 and _dvS.iloc[-6:].min() <= -0.10
     _ok = lambda b: "<b style='color:#d9534f'>✔</b>" if b else "<span style='color:var(--mut)'>—</span>"
-    _stop_html = ("<div style='margin-top:5px;padding:3px 6px;border-radius:6px;background:" + ("#fde2e1" if (_s1 or _s2) else "var(--bg)") + ";font-size:12px' "
+    _stop_html = ("<div class=stp style='border-color:" + ("#d9534f" if (_s1 or _s2) else "#e6c84f") + "' "
                   "title='跌幅=近一年最高收盤後的最低價(盤中)。回測 2009~2026:嚴格版 8 次訊號(含 2025/04/25),62% 之後 60 日內沒再跌超過 3%,20 日後平均 +6.1%、勝率 88%;寬鬆版 9 次,67%。訊號通常比最低點晚 2 天~2 週'>"
                   f"<b>🚦 止跌訊號</b> 週K連升 <b>{min(_wr, 3)}/3</b> 日・跌幅≤−20% {_ok(_wdd <= -0.20)}・乖離≤−10% {_ok(_dvS.iloc[-1] <= -0.10)}"
                   f"<br>嚴格(今日乖離) {_ok(_s1)}　寬鬆(近5日乖離) {_ok(_s2)}</div>")
@@ -947,12 +1064,11 @@ def main():
                                    "s_dd": CRASH_AVG["台股"][1], "s_dv": 0.039, "s_wk": 4.5, "s_mk": 16.0, "s_ck": 16.7})
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。MA220下彎:目前=20 日斜率,達平均=斜率<0,達寬鬆=今天均線比昨天低。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
                "寬鬆門檻=平均往較淺方向退 1 個標準差(跌幅/乖離=平均+1σ,K 值=平均+1σ)。僅供參考,長空頭會遠超過平均'>"
-               f"<b>🎯 台股落底指標</b> <span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
+               f"<div class=mkh><div><b>🎯 台股落底指標</b><br><span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span></div>" + _stop_html + "</div>"
                "<div class=mkg><div><table><tr><th>指標</th><th>目前</th><th>平均</th><th>寬鬆</th><th>達平均</th><th>達寬鬆</th></tr>"
                + "".join(_rows) + "</table></div><div>"
-               + _stop_html +
-               "<table style='margin-top:4px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
-               + "".join(_kdr) + "</table></div></div></div>")
+               "<table style='margin-top:2px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
+               + "".join(_kdr) + "</table>" + kd_charts + "</div></div></div>")
     row = lambda p: f"<div class=lvr><span>-{p}%</span><i>→</i><em>{hi_px * (1 - p / 100):,.0f}</em></div>"
     _mg = closed_month_gold(df)
     _extra = []
@@ -1076,8 +1192,8 @@ def main():
     rk = rule_checks(cyc)
     page = f"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>480天 Z-SCORE 與日週月動態 KD</title><style>
-:root{{--bg:#fff;--fg:#222;--mut:#666;--card:#f4f6f8;--line:#e3e3e3;--hi:#fde8e8;--pk:#fde0ec;--gr:#dcf3e4}}
-@media(prefers-color-scheme:dark){{:root{{--bg:#14161a;--fg:#e6e6e6;--mut:#999;--card:#22262d;--line:#333;--hi:#4a2326;--pk:#5a2a3f;--gr:#1f3b2a}}}}
+:root{{--bg:#fff;--fg:#222;--mut:#666;--card:#f4f6f8;--line:#e3e3e3;--hi:#fde8e8;--pk:#fde0ec;--gr:#dcf3e4;--yl:#fff5cc}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#14161a;--fg:#e6e6e6;--mut:#999;--card:#22262d;--line:#333;--hi:#4a2326;--pk:#5a2a3f;--gr:#1f3b2a;--yl:#3d3618}}}}
 body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1400px;margin:0 auto;padding:16px;background:var(--bg);color:var(--fg)}}
 .cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}}.card{{background:var(--card);border-radius:8px;padding:10px 12px}}
 .card.m_buy{{background:#fdecea;box-shadow:inset 0 0 0 2px #e0857c}}.card.m_sell{{background:#e5f4ea;box-shadow:inset 0 0 0 2px #8fcba5}}.card.m_mid{{background:#e8f0fb;box-shadow:inset 0 0 0 2px #9db9e3}}
@@ -1089,7 +1205,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1400px;margin:0 
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card>span.ct{{font-size:15px;font-weight:800;padding-bottom:4px;margin-bottom:6px;border-bottom:2px solid;line-height:1.3}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
-.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.mkg{{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}.mkg>div{{flex:0 1 auto;min-width:0}}.mkb{{flex:0 1 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb small.kn{{font-size:10px;color:var(--mut);font-weight:400;white-space:nowrap}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.pkb{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:11.5px;width:0;min-width:100%;line-height:1.5}}.calc{{margin-top:8px;box-sizing:border-box;border:2px solid #16a085;border-radius:8px;padding:4px 9px;background:var(--card);font-size:12px}}.calc span{{color:var(--mut);font-size:11px;margin-left:4px}}.calc .cin{{display:flex;gap:4px 10px;flex-wrap:wrap;margin:5px 0;align-items:center}}.calc label{{width:auto!important;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;margin:0;font-size:12px;white-space:nowrap}}.calc input{{box-sizing:border-box;width:76px!important;min-width:0;flex:0 0 76px;padding:3px 5px;font-size:13px;border:1px solid var(--line);border-radius:5px}}.calc button{{padding:4px 12px;border-radius:5px;border:1px solid #16a085;background:#16a085;color:#fff;font-weight:700}}.cres div{{margin:3px 0;line-height:1.45}}.cres table{{border-collapse:collapse;margin:3px 0;font-size:11.5px}}.cres th,.cres td{{padding:1px 5px;border-bottom:1px solid var(--line);white-space:nowrap}}.cres .s3{{padding:2px 5px;border-radius:5px}}.t5b{{margin-top:8px;box-sizing:border-box;overflow-x:auto;border:2px solid #c0392b;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.t5b table{{font-size:11px;margin-top:2px;border-collapse:collapse}}.t5b th,.t5b td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.t5b td:first-child,.t5b th:first-child{{text-align:left}}.t5b small{{color:var(--mut);margin-left:3px;font-size:10px}}.crash{{flex:0 1 auto;max-width:100%;overflow-x:auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:grid;grid-template-columns:auto auto minmax(0,1fr);grid-template-areas:'dev rules top5' 'dev crash crash' 'mk mk mk';gap:10px;align-items:start;margin:-6px 0 -4px}}.hrow>.devb{{grid-area:dev}}.hrow>.rules{{grid-area:rules;max-width:300px}}.hrow>.t5b{{grid-area:top5;margin-top:0;justify-self:start;max-width:100%}}.hrow>.t5b table{{width:auto}}.hrow>.crash{{grid-area:crash;justify-self:start}}.hrow>.mkb{{grid-area:mk;justify-self:start}}@media(max-width:1330px){{.hrow{{grid-template-columns:auto minmax(0,1fr);grid-template-areas:'dev rules' 'dev top5' 'crash crash' 'mk mk'}}}}@media(max-width:980px){{.hrow{{grid-template-columns:minmax(0,1fr);grid-template-areas:'dev' 'rules' 'top5' 'crash' 'mk'}}.hrow>.rules{{max-width:none}}}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .hiz{{margin-top:3px;color:#d9534f}}.devb .hiz i{{color:var(--mut)}}.devb .prs{{margin-top:2px;font-size:11.5px;width:0;min-width:100%;line-height:1.4}}.devb .ded{{margin-top:3px;font-size:11.5px}}.devb .ded table{{border-collapse:collapse;width:100%}}.devb .ded th,.devb .ded td{{padding:1px 3px;text-align:right;white-space:nowrap;line-height:1.25}}.devb .ded td:first-child{{text-align:left;color:var(--mut)}}.devb .ded small{{color:var(--mut);font-size:10px}}.devb .maw{{font-weight:700}}.devb .mar{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:12.5px}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
+.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.kchs{{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px;width:0;min-width:100%}}.kspk{{flex:1 1 260px;max-width:300px;font-size:11.5px}}.kspk small{{color:var(--mut);font-size:10.5px}}.mkh{{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}}.mkh span{{margin-left:0}}.stp{{padding:3px 8px;border-radius:6px;border:1px solid #e6c84f;background:var(--yl);font-size:12px;line-height:1.45}}.mkg{{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}.mkg>div{{flex:0 1 auto;min-width:0}}.mkb{{flex:0 1 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb small.kn{{font-size:10px;color:var(--mut);font-weight:400;white-space:nowrap}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.pkb{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:11.5px;width:0;min-width:100%;line-height:1.5}}.calc{{margin-top:8px;box-sizing:border-box;border:2px solid #16a085;border-radius:8px;padding:4px 9px;background:var(--card);font-size:12px}}.calc span{{color:var(--mut);font-size:11px;margin-left:4px}}.calc .cin{{display:flex;gap:4px 10px;flex-wrap:wrap;margin:5px 0;align-items:center}}.calc label{{width:auto!important;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;margin:0;font-size:12px;white-space:nowrap}}.calc input{{box-sizing:border-box;width:76px!important;min-width:0;flex:0 0 76px;padding:3px 5px;font-size:13px;border:1px solid var(--line);border-radius:5px}}.calc button{{padding:4px 12px;border-radius:5px;border:1px solid #16a085;background:#16a085;color:#fff;font-weight:700}}.cres div{{margin:3px 0;line-height:1.45}}.cres table{{border-collapse:collapse;margin:3px 0;font-size:11.5px}}.cres th,.cres td{{padding:1px 5px;border-bottom:1px solid var(--line);white-space:nowrap}}.cres .s3{{padding:2px 5px;border-radius:5px}}.t5b{{margin-top:8px;box-sizing:border-box;overflow-x:auto;border:2px solid #c0392b;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.t5b table{{font-size:11px;margin-top:2px;border-collapse:collapse}}.t5b th,.t5b td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.t5b td:first-child,.t5b th:first-child{{text-align:left}}.t5b small{{color:var(--mut);margin-left:3px;font-size:10px}}.crash{{flex:0 1 auto;max-width:100%;overflow-x:auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.hrow{{display:grid;grid-template-columns:auto auto minmax(0,1fr);grid-template-areas:'dev rules top5' 'dev crash crash' 'mk mk mk';gap:10px;align-items:start;margin:-6px 0 -4px}}.hrow>.devb{{grid-area:dev}}.hrow>.rules{{grid-area:rules;max-width:300px}}.hrow>.t5b{{grid-area:top5;margin-top:0;justify-self:start;max-width:100%}}.hrow>.t5b table{{width:auto}}.hrow>.crash{{grid-area:crash;justify-self:start}}.hrow>.mkrow{{grid-area:mk;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;min-width:0}}.altb{{flex:1 1 280px;max-width:380px;min-width:270px;box-sizing:border-box;border:2px solid #f39c12;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.altb span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.altb table{{font-size:11.5px;margin:2px 0 4px;border-collapse:collapse}}.altb th,.altb td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.altb td:first-child{{text-align:left}}.altc{{margin-top:2px}}@media(max-width:1330px){{.hrow{{grid-template-columns:auto minmax(0,1fr);grid-template-areas:'dev rules' 'dev top5' 'crash crash' 'mk mk'}}}}@media(max-width:980px){{.hrow{{grid-template-columns:minmax(0,1fr);grid-template-areas:'dev' 'rules' 'top5' 'crash' 'mk'}}.hrow>.rules{{max-width:none}}}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .spk{{margin-top:3px}}.devb .hiz{{margin-top:3px;color:#d9534f}}.devb .hiz i{{color:var(--mut)}}.devb .prs{{margin-top:2px;font-size:11.5px;width:0;min-width:100%;line-height:1.4}}.devb .ded{{margin-top:3px;font-size:11.5px}}.devb .ded table{{border-collapse:collapse;width:100%}}.devb .ded th,.devb .ded td{{padding:1px 3px;text-align:right;white-space:nowrap;line-height:1.25}}.devb .ded td:first-child{{text-align:left;color:var(--mut)}}.devb .ded small{{color:var(--mut);font-size:10px}}.devb .maw{{font-weight:700}}.devb .mar{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:12.5px}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
@@ -1102,7 +1218,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
 <a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav>
-<div class=hrow>{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則:左側 MA220 乖離分批、④ 左側停損、保險 A/B、空手時一半反1(00632R)一半中華電,收盤乖離跌到 MA220−15% 時反1 全賣、改中華電與現金各半。加權指數(不含息)回測至 2026-11-20:近 20 年 20.0%(回撤 −17.0%)、近 10 年 26.8%(−16.4%)、2002/8 起 18.3%(−22.5%);00632R 2014 年前為模擬;0050 含息每年約再高 3~4%">　近20年年化 20.0%、回撤 −17.0%</span><div title="轉出:6/6 全成立 → 一半反1(00632R)、一半中華電;之後收盤乖離第一次跌到 MA220−15%,反1 全賣,改中華電、現金各半(空手部位變中華電 75%、現金 25%,左側買進先用這筆現金)。6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半反1(00632R)、一半中華電</b>;{rk[7]}{rk[8]}→<b>中華電、現金各半</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出,資金回到空手配置(反1 已賣出時為中華電、現金各半),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{top5}{crash}{mk_html}</div>
+<div class=hrow>{dev_html}<div class=rules><b class=t>📋 買賣規則</b><span title="目前全部規則:左側 MA220 乖離分批、④ 左側停損、保險 A/B、空手時一半反1(00632R)一半中華電,收盤乖離跌到 MA220−15% 時反1 全賣、改中華電與現金各半。加權指數(不含息)回測至 2026-11-20:近 20 年 20.0%(回撤 −17.0%)、近 10 年 26.8%(−16.4%)、2002/8 起 18.3%(−22.5%);00632R 2014 年前為模擬;0050 含息每年約再高 3~4%">　近20年年化 20.0%、回撤 −17.0%</span><div title="轉出:6/6 全成立 → 一半反1(00632R)、一半中華電;之後收盤乖離第一次跌到 MA220−15%,反1 全賣,改中華電、現金各半(空手部位變中華電 75%、現金 25%,左側買進先用這筆現金)。6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>一半反1(00632R)、一半中華電</b>;{rk[7]}{rk[8]}→<b>中華電、現金各半</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出,資金回到空手配置(反1 已賣出時為中華電、現金各半),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{top5}{crash}<div class=mkrow>{mk_html}{alt}</div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
 </div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{calc}</div></div>
