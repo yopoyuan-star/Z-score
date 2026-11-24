@@ -86,7 +86,7 @@ def bubble(d):
                 [_t(f"{'✔' if ok else '✖'} {name}", size="sm", color=RED if ok else GRAY) for name, ok in d["warn"]]),
         {"type": "box", "layout": "vertical", "margin": "md", "paddingAll": "md", "cornerRadius": "md",
          "backgroundColor": "#c1121f", "borderColor": "#ffd60a", "borderWidth": "2px", "contents": [
-            _t("⚠ 6/6 成立須轉出：反1(00632R)、現金 各半!!(之後跌 15/20/25/30% 分批轉回股票)", size="sm", weight="bold", color="#ffffff", wrap=True)]
+            _t("⚠ 6/6 成立須轉出：反1(00632R)先買 1/3、其餘現金;破年線反1 再買 2/3!!(之後跌 15/20/25/30% 分批轉回股票)", size="sm", weight="bold", color="#ffffff", wrap=True)]
             + ([_t(t, size="xs", weight="bold", color="#ffd60a", wrap=True) for t in d["cycle"]] if d.get("cycle")
                else [_t("目前已達 6/6,請開始執行", size="sm", weight="bold", color="#ffd60a", wrap=True)] if warn_all else [])},
     ]
