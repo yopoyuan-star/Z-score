@@ -545,29 +545,30 @@ def inv_line(cy):
             f"跌到 MA220−15%(約 {cy['inv_px']:,.0f})→ 反1 全賣,改中華電、現金各半")
 
 
+def simple_lines(sr):
+    """簡化規則 ②③ 的提示(今天新達成的放最前面)"""
+    L = [f"⚠ 今日跌破 −{st['x']:.0%}({st['px']:,.0f}):請把 {st['w']:.0%} 轉回股票" for st in sr["steps"] if st["new"]]
+    L += [f"⚠ 今日{c_['nm']}成立:請買回 1/3" for c_ in sr["conds"] if c_["new"]]
+    nx = sr["nxt"]
+    L.append(f"② 跌幅 {sr['dd']:+.1%}(最高 {sr['hi']:,.0f}):已轉換 {sr['conv']:.0%}"
+             + (f";下一檔 −{nx['x']:.0%}({nx['px']:,.0f})轉 {nx['w']:.0%}" if nx else ";已全部轉換"))
+    n3 = sum(c_["ok"] for c_ in sr["conds"])
+    L.append(f"③ 買回 {n3}/3:" + "、".join(f"{c_['nm']}{'☑' if c_['ok'] else '☐'}" for c_ in sr["conds"]))
+    return L
+
+
 def cycle_lines(cy, z):
     """已轉出期間的提示(LINE 與網頁滑鼠說明用);持有中只在保險有效時提示停損價"""
     if cy["state"] == "持有":
         return [f"保險A:收盤跌破 {cy['stop_px']:,.0f}(買回後最高 {cy['top']:,.0f} 的 −20%)→ 轉出"] if cy["stop_px"] else []
     if cy["maout"]:
         i_ = cy["ins"]; nm = "保險 A(高點−20%)" if cy["why"] == "A" else "保險 B(MA220)"
-        return [(f"今日{nm}成立,請轉出:反1(00632R)25%、中華電 50%、現金 25%" if cy["n"] == 0 else
+        return [(f"今日{nm}成立,請轉出:反1(00632R)、中華電 各半" if cy["n"] == 0 else
                  f"{nm}轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)"),
-                inv_line(cy),
-                f"連 {INS_DAYS} 天收盤站回 MA220({i_['ma']:,.0f})→ 全部買回(不等 KD);目前 {min(i_['up'], INS_DAYS)}/{INS_DAYS}"]
-    head = ("今日 6/6 成立,請開始執行轉出" if cy["n"] == 0 and cy["why"] == "6/6" else
-            f"已轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)")
-    if cy["leftoff"]:
-        d_, px_, la_ = cy["lstop"]
-        left = f"左側停損:{d_:%Y-%m-%d} 收 {px_:,.0f} 跌破左側均價 {la_:,.0f} 的 −15%,左側已全賣,本次只等右側"
-    else:
-        left = (f"左側已投入 {_p(cy['pos'])}" + (f"(均價 {cy['left_avg']:,.0f},跌破 {cy['left_avg'] * (1 - LEFT_STOP):,.0f} 左側全賣)" if cy["left_avg"] else "")
-                + (f";下一筆 MA220−{cy['nxt'][0]:.0%} {cy['nxt'][2]:,.0f} 加 {_p(cy['nxt'][1])}" if cy["nxt"] else ";左側已滿 50%"))
-    if cy["arm"]:
-        right = f"右側已啟動({cy['arm'][0]} {cy['arm'][1]:%m/%d}),等已收完月K KD 金叉全部買回"
-    else:
-        right = f"右側等 Z≤0 或跌 20%({cy['arm_px']:,.0f});{max(BACKUP_DAYS - cy['n'], 0)} 個交易日後未成立 → 改只看月 KD 金叉"
-    return [head, inv_line(cy), left, right]
+                f"連 {INS_DAYS} 天收盤站回 MA220({i_['ma']:,.0f})→ 全部買回;目前 {min(i_['up'], INS_DAYS)}/{INS_DAYS}"]
+    head = ("今日 6/6 成立,請轉出:反1(00632R)、中華電 各半" if cy["n"] == 0 and cy["why"] == "6/6" else
+            f"已轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起),反1、中華電各半")
+    return [head] + (simple_lines(cy["sr"]) if cy.get("sr") else [])
 
 
 def cycle_short(cy):
@@ -575,16 +576,20 @@ def cycle_short(cy):
     if cy["state"] == "持有":
         return f"保險:跌破 {cy['stop_px']:,.0f} 再轉出" if cy["stop_px"] else ""
     if cy["n"] == 0 and cy["why"] == "6/6":
-        return "今日 6/6 成立,請開始執行轉出"
+        return "今日 6/6 成立,請轉出:反1、中華電各半"
     if cy["maout"]:
         return (f"今日保險 {cy['why']} 成立,請轉出" if cy["n"] == 0 else
                 f"保險{cy['why']}轉出{cy['n']}日｜站回MA220 {min(cy['ins']['up'], INS_DAYS)}/{INS_DAYS}")
-    if cy.get("invoff_today"):
-        return "今日跌破MA220−15%,請賣反1→中華電/現金各半"
-    if cy.get("inv2_today"):
-        return "今日跌破年線,請用現金加買反1 25%"
-    tail = "等月KD金叉" if cy["arm"] else "等跌20%"
-    return f"已轉出{cy['n']}日｜{'反1已出｜' if cy.get('invoff') else ''}{'左側已停損' if cy['leftoff'] else '左' + _p(cy['pos'])}｜{tail}"
+    sr = cy.get("sr")
+    if not sr:
+        return f"已轉出{cy['n']}日"
+    new = [st for st in sr["steps"] if st["new"]]
+    if new:
+        return f"今日跌破−{new[-1]['x']:.0%},請轉{sum(st['w'] for st in new):.0%}回股票"
+    nc = [c_ for c_ in sr["conds"] if c_["new"]]
+    if nc:
+        return f"今日{nc[0]['nm']},請買回1/3"
+    return f"已轉出{cy['n']}日｜跌幅{sr['dd']:+.0%}｜已轉{sr['conv']:.0%}｜買回{sum(c_['ok'] for c_ in sr['conds'])}/3"
 
 
 def z_level(closes, target, n=480):
@@ -600,6 +605,127 @@ def z_level(closes, target, n=480):
         if zf(mid) < target: lo = mid
         else: hi = mid
     return (lo + hi) / 2
+
+
+PYR_HTML = ("<div class=pyb><div class=pyh><b>🔺 金字塔加碼</b><select id=pysel aria-label='選擇方案'></select>"
+            "<a href='https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/' target=_blank rel=noopener>完整頁 →</a></div>"
+            "<label class=pyl>可投入總金額 <input id=pyamt inputmode=numeric placeholder='例:1,000,000'></label>"
+            "<table class=pyt><tr><th>下跌</th><th>比例</th><th>投入金額</th><th>已執行</th></tr>"
+            + "".join(f"<tr><td>−{d}%</td><td>{w}%</td><td class=pyv>—</td><td><input type=checkbox class=pyck data-k={k}></td></tr>"
+                      for k, (d, w) in enumerate(zip((15, 20, 25, 30), (20, 25, 25, 30))))
+            + "</table><div class=pyf><span id=pymode></span><button type=button id=pyclr>清除打勾</button></div></div>")
+PYR_JS = """<script>(function(){
+var W=[20,25,25,30],KEY='pyramid-plans-v1',N=3,st=[],cur=0;
+var sel=document.getElementById('pysel'),amt=document.getElementById('pyamt');if(!sel)return;
+var v=document.querySelectorAll('.pyv'),ck=document.querySelectorAll('.pyck'),mode=document.getElementById('pymode');
+function dg(x){return String(x||'').replace(/[^0-9]/g,'').slice(0,12)}
+function fmt(n){return Math.round(n).toLocaleString('en-US')}
+function load(){var a=null;try{a=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+ st=[];for(var i=0;i<N;i++){var o=(Array.isArray(a)&&a[i])||{};st.push({name:String(o.name||''),amount:dg(o.amount),memo:String(o.memo||''),done:W.map(function(_,k){return Array.isArray(o.done)&&o.done[k]===true})})}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
+function opts(){sel.innerHTML='';for(var i=0;i<N;i++){var o=document.createElement('option');o.value=i;o.textContent=st[i].name||('方案 '+(i+1));sel.appendChild(o)}sel.value=cur}
+function render(){var s=st[cur],t=parseInt(s.amount||'0',10)||0,demo=!t,T=demo?1000000:t,used=0,n=0,got=0;
+ for(var k=0;k<W.length;k++){var x=k==W.length-1?T-used:Math.round(T*W[k]/100);used+=x;v[k].textContent=fmt(x);v[k].classList.toggle('demo',demo);v[k].classList.toggle('done',s.done[k]);ck[k].checked=s.done[k];if(s.done[k]){n++;got+=x}}
+ if(document.activeElement!==amt)amt.value=t?fmt(t):'';
+ mode.textContent=(demo?'範例:以 1,000,000 試算':'合計 '+fmt(T))+(n?' ・ 已執行 '+n+'/4 檔 '+fmt(got):'')}
+load();try{cur=Math.min(N-1,parseInt(localStorage.getItem('pyramid-cur')||'0',10)||0)}catch(e){}opts();render();
+sel.addEventListener('change',function(){cur=+sel.value;try{localStorage.setItem('pyramid-cur',cur)}catch(e){}render()});
+amt.addEventListener('input',function(){st[cur].amount=dg(amt.value);amt.value=st[cur].amount?fmt(+st[cur].amount):'';save();render()});
+ck.forEach(function(c,k){c.addEventListener('change',function(){st[cur].done[k]=c.checked;save();render()})});
+document.getElementById('pyclr').addEventListener('click',function(){st[cur].done=W.map(function(){return false});save();render()});
+window.addEventListener('storage',function(e){if(e.key===KEY){load();opts();render()}});
+})();</script>"""
+
+
+DD_STEPS = [(0.15, 0.20), (0.20, 0.25), (0.25, 0.25), (0.30, 0.30)]   # 簡化版 ②:最高點到最低點跌幅 → 轉換比例(合計 100%)
+
+
+def dd_chart(df):
+    """台股一年最高收盤日起到今天的收盤走勢,加上 −15%~−50% 價位線(跌破的線變深色)"""
+    try:
+        c = df.Close; hi_i = c.iloc[-250:].idxmax(); hi = float(c[hi_i]); s_ = c.loc[hi_i:]; lo = float(df.Low.loc[hi_i:].min())
+        W_, H_, L_, R_, T_, B_ = 330, 300, 6, 92, 8, 16
+        n = len(s_); x_ = lambda i: L_ + (W_ - L_ - R_) * i / max(n - 1, 1)
+        top, bot = hi * 1.02, hi * 0.48
+        y_ = lambda v: T_ + (H_ - T_ - B_) * (top - v) / (top - bot)
+        lines = ""
+        for k in range(15, 55, 5):
+            v = hi * (1 - k / 100); hit = lo <= v; main = k <= 30
+            col = ("#c0392b" if hit else "#e8908c") if main else ("#666" if hit else "#aaa")
+            lines += (f"<line x1='{L_}' x2='{W_ - R_}' y1='{y_(v):.1f}' y2='{y_(v):.1f}' stroke='{col}' stroke-width='{1.3 if main else 1}' stroke-dasharray='{'' if hit else '4 3'}'/>"
+                      f"<text x='{W_ - R_ + 4}' y='{y_(v) + 3.5:.1f}' font-size='10.5' fill='{col}' font-weight='{700 if hit else 400}'>−{k}% {v:,.0f}</text>")
+        lines += (f"<line x1='{L_}' x2='{W_ - R_}' y1='{y_(hi):.1f}' y2='{y_(hi):.1f}' stroke='#888' stroke-width='.8'/>"
+                  f"<text x='{W_ - R_ + 4}' y='{y_(hi) + 3.5:.1f}' font-size='10.5' fill='var(--mut)'>高 {hi:,.0f}</text>")
+        pts = " ".join(f"{x_(i):.1f},{y_(v):.1f}" for i, v in enumerate(s_))
+        ma = c.rolling(220).mean().loc[hi_i:]
+        pl = lambda ser, col, w, dash="": (f"<polyline points='" + " ".join(f"{x_(i):.1f},{y_(v):.1f}" for i, v in enumerate(ser) if v == v)
+                                          + f"' fill='none' stroke='{col}' stroke-width='{w}' stroke-dasharray='{dash}'/>")
+        mal = pl(ma * 1.02, "#d9534f", 1.1, "5 3") + pl(ma, "#8e44ad", 1.6) + pl(ma * 0.985, "#2e9e5b", 1.1, "5 3")
+        m_now = float(ma.iloc[-1])
+        cv = float(s_.iloc[-1]); cx, cy_ = x_(n - 1), y_(cv)
+        li = int(df.Low.loc[hi_i:].values.argmin())
+        return (f"<div class=ddc title='台股從近一年最高收盤日({hi_i:%Y-%m-%d})到今天的收盤走勢;紅線 −15~−30% 是跌幅轉換的四檔,灰線 −35~−50%;實線=最低價已跌破;紫線=年線 MA220,紅虛線=MA220+2%(站上=買回條件),綠虛線=MA220−1.5%'>"
+                f"<b>📉 高點迄今</b> <span>最高 {hi:,.0f}({hi_i:%m/%d})・現在 {cv:,.0f}({cv / hi - 1:+.1%})・最低 {lo:,.0f}({lo / hi - 1:+.1%})</span>"
+                f"<span><b style='color:#8e44ad'>━ 年線 {m_now:,.0f}</b>　<b style='color:#d9534f'>┅ +2% {m_now * 1.02:,.0f}</b>　<b style='color:#2e9e5b'>┅ −1.5% {m_now * 0.985:,.0f}</b></span>"
+                f"<svg viewBox='0 0 {W_} {H_}' width='100%' style='display:block'>{lines}{mal}"
+                f"<polyline points='{pts}' fill='none' stroke='#1a5fb4' stroke-width='1.8'/>"
+                f"<circle cx='{x_(li):.1f}' cy='{y_(lo):.1f}' r='2.6' fill='#2e9e5b'/>"
+                f"<circle cx='{cx:.1f}' cy='{cy_:.1f}' r='3.4' fill='#e67e22' stroke='#fff' stroke-width='1'/>"
+                f"<text x='{L_}' y='{H_ - 3}' font-size='9.5' fill='var(--mut)'>{s_.index[0]:%m/%d}</text>"
+                f"<text x='{W_ - R_}' y='{H_ - 3}' font-size='9.5' fill='var(--mut)' text-anchor='end'>{s_.index[-1]:%m/%d}</text></svg></div>")
+    except Exception as e:
+        print("高點迄今圖失敗", e); return ""
+
+
+def simple_state(m, df, cy, mc):
+    """簡化版規則的狀態:② 跌幅(最低價距一年最高收盤)各檔是否達成、今天新達成;③ 三個買回條件"""
+    out = cy["state"] != "持有"
+    c = df.Close; hi_i = c.iloc[-250:].idxmax(); hi = float(c[hi_i])
+    lows = df.Low.loc[hi_i:]; lo = float(lows.min()); lo_prev = float(lows.iloc[:-1].min()) if len(lows) > 1 else hi
+    dd = lo / hi - 1
+    steps = [dict(x=x, w=w, px=hi * (1 - x), ok=dd <= -x, new=lo <= hi * (1 - x) < lo_prev) for x, w in DD_STEPS]
+    cl = m["台股收盤價"]; ma = m["220日均線"]
+    gold = mc["state"] == "黃金交叉"
+    since = m.loc[cy["exit"]:] if out and cy.get("exit") is not None else m.iloc[0:0]
+    a9 = (sum((since[cc] == "BUY").astype(int) for cc in XCOLS[:9]) == 9) if len(since) else pd.Series(dtype=bool)
+    up2 = bool(cl.iloc[-1] >= ma.iloc[-1] * 1.02)
+    conds = [dict(nm="已收完月KD 金叉", det=f"K {mc['K']:.1f} / D {mc['D']:.1f}", ok=gold, new=gold and mc["date"] == m.index[-1]),
+             dict(nm="收盤站上 MA220+2%", det=f"{ma.iloc[-1] * 1.02:,.0f}(現 {cl.iloc[-1]:,.0f})", ok=up2,
+                  new=up2 and bool(cl.iloc[-2] < ma.iloc[-2] * 1.02)),
+             dict(nm="轉出後 9 欄曾全 BUY", det="5>10…80>90 同時 BUY", ok=bool(a9.any()) if len(a9) else False,
+                  new=bool(len(a9)) and bool(a9.iloc[-1]) and not bool(a9.iloc[:-1].any()))]
+    return dict(out=out, hi=hi, hi_i=hi_i, lo=lo, dd=dd, steps=steps, conds=conds,
+                conv=sum(st["w"] for st in steps if st["ok"]), nxt=next((st for st in steps if not st["ok"]), None))
+
+
+def rules_simple(sr, cy):
+    """簡化版買賣規則框;輸入總金額自動算每一階金額(存在這台瀏覽器)"""
+    ck = lambda o: '<b style="color:#1a7f37">☑</b>' if o else '<b style="color:#aaa;font-weight:400">☐</b>'
+    out = sr["out"]
+    r2 = "".join(f"<tr><td>−{st['x']:.0%}</td><td>{st['px']:,.0f}</td><td>{st['w']:.0%}</td><td class=amt data-k=q2 data-w='{st['w']}'>—</td><td>{ck(st['ok'])}</td></tr>"
+                 for st in sr["steps"])
+    r3 = "".join(f"<tr><td>{c_['nm']}</td><td>{c_['det']}</td><td>1/3</td><td class=amt data-k=q3 data-w='{1/3}'>—</td><td>{ck(c_['ok'])}</td></tr>" for c_ in sr["conds"])
+    return (f"<div class=rules><div><b class=t>📋 買賣規則(簡化版)</b> <span>容易執行優先</span></div>"
+            f"<div class=rr>{ck(out)} <b>① 轉出</b>:6/6 全成立 → <b>反1(00632R)、中華電 各半</b>"
+            + (f" <small>({cy['exit']:%m/%d} 轉出)</small>" if out and cy.get("exit") is not None else "") + "</div>"
+            f"<div class=rr><b>② 跌幅轉換</b> <small>最高收盤 {sr['hi']:,.0f}({sr['hi_i']:%m/%d})→ 最低價 {sr['lo']:,.0f},跌幅 <b>{sr['dd']:+.1%}</b>;賣反1/中華電換回股票</small>"
+            f"<label class=rin>總金額 <input id=q2 inputmode=numeric placeholder='輸入金額'></label>"
+            f"<table class=rt><tr><th>跌幅</th><th>價位</th><th>比例</th><th>金額</th><th></th></tr>{r2}</table></div>"
+            f"<div class=rr><b>③ 買回</b> <small>任一條件成立就買該條件的 1/3</small>"
+            f"<label class=rin>總金額 <input id=q3 inputmode=numeric placeholder='輸入金額'></label>"
+            f"<table class=rt><tr><th>條件</th><th>目前</th><th>比例</th><th>金額</th><th></th></tr>{r3}</table></div></div>")
+
+
+RULES_JS = """<script>(function(){
+function num(v){return parseFloat(String(v).replace(/[^0-9.]/g,''))||0}
+function upd(k){var el=document.getElementById(k);if(!el)return;var t=num(el.value);
+ document.querySelectorAll('.amt[data-k="'+k+'"]').forEach(function(td){td.textContent=t?Math.round(t*parseFloat(td.dataset.w)).toLocaleString():'—'});
+ try{localStorage.setItem('rule_'+k,el.value)}catch(e){}}
+['q2','q3'].forEach(function(k){var el=document.getElementById(k);if(!el)return;
+ try{var v=localStorage.getItem('rule_'+k);if(v)el.value=v}catch(e){}
+ el.addEventListener('input',function(){upd(k)});
+ el.addEventListener('blur',function(){var t=num(el.value);if(t)el.value=t.toLocaleString();upd(k)});upd(k)});
+})();</script>"""
 
 
 def rule_checks(cy):
@@ -1107,6 +1233,8 @@ def main():
         if cyc["backs"] == _extra:
             break
         _extra = cyc["backs"]
+    cyc['sr'] = simple_state(m, df, cyc, mc)
+    ddc = dd_chart(df)
     cyl = cycle_lines(cyc, z)
     insl = ins_lines(cyc)
     _tip = "\n".join(cyl).replace("'", "")
@@ -1117,7 +1245,7 @@ def main():
     wnote = ((f"本段自 {wstart:%Y-%m-%d} 全部買回重算" if wstart_ma == "buy" else
               f"本段自 {wstart:%Y-%m-%d} 站回 MA{model.SEG_MA}" if wstart_ma == "ma" else f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}")
              if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
-    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：反1(00632R)25%、中華電 50%、現金 25%!!(破年線現金加買反1 25%;乖離−15% 時反1 改中華電、現金各半){cyl_html}</div>"))
+    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：反1(00632R)、中華電 各半!!(之後跌 15/20/25/30% 分批轉回股票){cyl_html}</div>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>" + (f"<small>高點後最低 {lo_px:,.2f}({lo_dt:%Y-%m-%d})|最大跌幅 <b style='color:#d9534f'>{lo_dd:+.1%}</b></small>" if lo_dd < 0 else "")))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
@@ -1219,8 +1347,9 @@ def main():
     ma_html, _ = ma_channel(m)
     stamp = datetime.now(TPE)
     rk = rule_checks(cyc)
+    rules_html = rules_simple(cyc['sr'], cyc)
     page = f"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>480天 Z-SCORE 與日週月動態 KD</title><style>
+<title>480天 Z-SCORE 與日週月動態 KD</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&display=swap&text=%20%21%2C%E2%91%A0%E2%91%A1%E2%91%A2%E2%91%A3%E2%91%A4%E2%91%A5%E3%80%81%E4%B8%80%E4%B8%8A%E4%B8%8D%E4%BA%BA%E4%BB%8A%E4%BB%A5%E4%BB%BB%E4%BD%8D%E4%BD%95%E5%83%B9%E5%85%A5%E5%88%86%E5%89%87%E5%89%8D%E5%8D%BB%E5%8F%AA%E5%8F%AF%E5%90%91%E5%90%A6%E5%96%AE%E5%A4%9C%E5%A4%A7%E5%A4%A9%E5%A5%BD%E5%AF%8C%E5%B0%8F%E5%B7%AE%E5%B7%B2%E5%BE%8B%E5%BE%8C%E6%85%8C%E6%88%96%E6%89%8B%E6%89%B9%E6%8A%8A%E6%8C%87%E6%8C%89%E6%8F%A1%E6%90%8D%E6%94%B6%E6%95%B8%E6%96%B0%E6%97%A5%E6%98%AF%E6%99%82%E6%99%9A%E6%9C%9F%E6%AA%94%E6%AD%A2%E6%AE%B5%E6%B2%92%E6%B8%9B%E6%B8%AC%E6%BC%B2%E7%81%BD%E7%85%A7%E7%94%A8%E7%9B%8A%E7%9B%A4%E7%9C%8B%E7%A2%BC%E7%A9%BA%E7%B4%80%E7%B4%85%E7%B4%99%E7%B6%93%E7%B6%B2%E8%81%9E%E8%82%A1%E8%83%BD%E8%99%9F%E8%A6%81%E8%A8%8A%E8%B2%A1%E8%B2%B4%E8%B2%B7%E8%B3%BA%E8%B7%8C%E9%95%B7%E9%A0%90%E9%AB%98%F0%9F%92%A1"><style>
 :root{{--bg:#fff;--fg:#222;--mut:#666;--card:#f4f6f8;--line:#e3e3e3;--hi:#fde8e8;--pk:#fde0ec;--gr:#dcf3e4;--yl:#fff5cc}}
 @media(prefers-color-scheme:dark){{:root{{--bg:#14161a;--fg:#e6e6e6;--mut:#999;--card:#22262d;--line:#333;--hi:#4a2326;--pk:#5a2a3f;--gr:#1f3b2a;--yl:#3d3618}}}}
 body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1400px;margin:0 auto;padding:16px;background:var(--bg);color:var(--fg)}}
@@ -1234,7 +1363,7 @@ body{{font-family:system-ui,"Noto Sans TC",sans-serif;max-width:1400px;margin:0 
 .cin{{display:flex;gap:6px;margin:4px 0 6px}}.cin label{{flex:1;min-width:0;font-size:11px;font-weight:400;color:var(--mut)}}.cin input{{width:100%;box-sizing:border-box;font-size:16px;font-weight:700;padding:4px 6px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:inherit}}
 .lvr2{{display:grid;grid-template-columns:3em 1fr 1fr;gap:4px;font-size:14px;font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}}.lvr2 em{{font-style:normal;font-weight:700;text-align:right}}.lvr2 u{{text-decoration:none;text-align:right;color:var(--mut)}}
 .card span{{display:block;font-size:12px;color:var(--mut)}}.card>span.ct{{font-size:15px;font-weight:800;padding-bottom:4px;margin-bottom:6px;border-bottom:2px solid;line-height:1.3}}.card b{{font-size:20px}}.lvr{{display:grid;grid-template-columns:3.4em 1.6em 1fr;font-size:14px;font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums}}.lvr span{{color:var(--mut)}}.lvr i{{font-style:normal;color:var(--mut)}}.lvr em{{font-style:normal;font-weight:700;text-align:right;padding-right:30%}}.card small{{display:block;font-size:12px;font-weight:400;color:var(--mut)}}
-.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.kchs{{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px;width:0;min-width:100%}}.kspk{{flex:1 1 260px;max-width:300px;font-size:11.5px}}.kspk small{{color:var(--mut);font-size:10.5px}}.mkh{{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}}.mkh span{{margin-left:0}}.stp{{padding:3px 8px;border-radius:6px;border:1px solid #e6c84f;background:var(--yl);font-size:12px;line-height:1.45}}.mkg{{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}.mkg>div{{flex:0 1 auto;min-width:0}}.mkb{{flex:0 1 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb small.kn{{font-size:10px;color:var(--mut);font-weight:400;white-space:nowrap}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.pkb{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:11.5px;width:0;min-width:100%;line-height:1.5}}.calc{{margin-top:8px;box-sizing:border-box;border:2px solid #16a085;border-radius:8px;padding:4px 9px;background:var(--card);font-size:12px}}.calc span{{color:var(--mut);font-size:11px;margin-left:4px}}.calc .cin{{display:flex;gap:4px 10px;flex-wrap:wrap;margin:5px 0;align-items:center}}.calc label{{width:auto!important;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;margin:0;font-size:12px;white-space:nowrap}}.calc input{{box-sizing:border-box;width:76px!important;min-width:0;flex:0 0 76px;padding:3px 5px;font-size:13px;border:1px solid var(--line);border-radius:5px}}.calc button{{padding:4px 12px;border-radius:5px;border:1px solid #16a085;background:#16a085;color:#fff;font-weight:700}}.cres div{{margin:3px 0;line-height:1.45}}.cres table{{border-collapse:collapse;margin:3px 0;font-size:11.5px}}.cres th,.cres td{{padding:1px 5px;border-bottom:1px solid var(--line);white-space:nowrap}}.cres .s3{{padding:2px 5px;border-radius:5px}}.t5b{{margin-top:8px;box-sizing:border-box;overflow-x:auto;border:2px solid #c0392b;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.t5b table{{font-size:11px;margin-top:2px;border-collapse:collapse}}.t5b th,.t5b td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.t5b td:first-child,.t5b th:first-child{{text-align:left}}.t5b small{{color:var(--mut);margin-left:3px;font-size:10px}}.crash{{flex:0 1 auto;max-width:100%;overflow-x:auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.crash th.zg{{text-align:center;font-size:10.5px;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line)}}.crash .zl{{border-left:1px dashed var(--line);padding-left:6px}}.hrow{{display:grid;grid-template-columns:auto auto;justify-content:start;grid-template-areas:'dev mid' 'mk mk';gap:10px;align-items:start;margin:-6px 0 -4px}}.hrow>.devb{{grid-area:dev}}.hrow>.rules{{grid-area:rules;max-width:300px}}.hrow>.t5b{{grid-area:top5;margin-top:0;justify-self:start;max-width:100%}}.hrow>.t5b table{{width:auto}}.hrow>.crash{{grid-area:crash;justify-self:start}}.hrow>.mid{{grid-area:mid;display:grid;grid-template-columns:300px auto;grid-template-areas:'rules top5' 'crash crash';grid-template-rows:1fr auto;gap:10px;justify-self:start;align-self:stretch;align-items:stretch;min-width:0;max-width:100%}}.mid>.rules{{grid-area:rules;max-width:none;min-width:0;display:flex;flex-direction:column;justify-content:space-between}}.mid>.t5b{{grid-area:top5;margin-top:0;min-width:0;max-width:none;display:flex;flex-direction:column}}.mid>.t5b table{{width:100%;flex:1 1 auto}}.mid>.crash{{grid-area:crash;min-width:0;justify-self:stretch}}.mid>.crash table{{width:100%}}.hrow>.mkrow{{grid-area:mk;display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;min-width:0;contain:inline-size}}.altb{{flex:1 1 280px;max-width:none;min-width:270px;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;border:2px solid #f39c12;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.altb span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.altb table{{font-size:11.5px;margin:2px 0 4px;border-collapse:collapse}}.altb th,.altb td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.altb td:first-child{{text-align:left}}.altc{{margin-top:2px}}@media(max-width:1330px){{.hrow{{justify-content:normal;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 1fr auto auto;grid-template-areas:'dev rules' 'dev top5' 'crash crash' 'mk mk'}}.hrow>.mid{{display:contents}}.mid>.rules{{display:block}}.mid>.t5b{{justify-self:start;max-width:100%;display:block}}.mid>.t5b table{{width:auto}}.altb{{max-width:480px}}}}@media(max-width:980px){{.hrow{{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:'dev' 'rules' 'top5' 'crash' 'mk'}}.hrow>.mid{{display:contents}}.mid>.crash{{display:block}}.hrow>.rules{{max-width:none}}}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .spk{{margin-top:3px}}.devb .hiz{{margin-top:3px;color:#d9534f}}.devb .hiz i{{color:var(--mut)}}.devb .prs{{margin-top:2px;font-size:11.5px;width:0;min-width:100%;line-height:1.4}}.devb .ded{{margin-top:3px;font-size:11.5px}}.devb .ded table{{border-collapse:collapse;width:100%}}.devb .ded th,.devb .ded td{{padding:1px 3px;text-align:right;white-space:nowrap;line-height:1.25}}.devb .ded td:first-child{{text-align:left;color:var(--mut)}}.devb .ded small{{color:var(--mut);font-size:10px}}.devb .maw{{font-weight:700}}.devb .mar{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:12.5px}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
+.hd{{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}}.hl{{flex:1 1 520px;min-width:0}}.memo{{flex:0 1 330px;min-width:240px;margin-top:2px}}.memo .mh{{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:14px}}.memo textarea{{width:100%;box-sizing:border-box;height:122px;resize:vertical;font:inherit;font-size:14px;line-height:1.6;padding:8px 10px;border:2px solid #f2b705;border-radius:8px;background:var(--card);color:var(--fg)}}.memo button{{font:inherit;font-size:12px;padding:3px 10px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}}.kchs{{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px;width:0;min-width:100%}}.kspk{{flex:1 1 260px;max-width:300px;font-size:11.5px}}.kspk small{{color:var(--mut);font-size:10.5px}}.mkh{{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}}.mkh span{{margin-left:0}}.stp{{padding:3px 8px;border-radius:6px;border:1px solid #e6c84f;background:var(--yl);font-size:12px;line-height:1.45}}.mkg{{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}.mkg>div{{flex:0 1 auto;min-width:0}}.mkb{{flex:0 1 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.mkb table{{font-size:11.5px;margin-top:2px;border-collapse:collapse}}.mkb th,.mkb td{{padding:2px 3px;white-space:nowrap;border-bottom:1px solid var(--line)}}.mkb small.kn{{font-size:10px;color:var(--mut);font-weight:400;white-space:nowrap}}.mkb span{{font-size:11px;color:#d9534f;font-weight:700}}.mkb td.y{{color:#d9534f;font-weight:800;text-align:center}}.mkb td.n{{text-align:center}}.mkb td.n{{color:var(--mut)}}.pkb{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:11.5px;width:0;min-width:100%;line-height:1.5}}.calc{{margin-top:8px;box-sizing:border-box;border:2px solid #16a085;border-radius:8px;padding:4px 9px;background:var(--card);font-size:12px}}.calc span{{color:var(--mut);font-size:11px;margin-left:4px}}.calc .cin{{display:flex;gap:4px 10px;flex-wrap:wrap;margin:5px 0;align-items:center}}.calc label{{width:auto!important;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;margin:0;font-size:12px;white-space:nowrap}}.calc input{{box-sizing:border-box;width:76px!important;min-width:0;flex:0 0 76px;padding:3px 5px;font-size:13px;border:1px solid var(--line);border-radius:5px}}.calc button{{padding:4px 12px;border-radius:5px;border:1px solid #16a085;background:#16a085;color:#fff;font-weight:700}}.cres div{{margin:3px 0;line-height:1.45}}.cres table{{border-collapse:collapse;margin:3px 0;font-size:11.5px}}.cres th,.cres td{{padding:1px 5px;border-bottom:1px solid var(--line);white-space:nowrap}}.cres .s3{{padding:2px 5px;border-radius:5px}}.t5b{{margin-top:8px;box-sizing:border-box;overflow-x:auto;border:2px solid #c0392b;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.t5b table{{font-size:11px;margin-top:2px;border-collapse:collapse}}.t5b th,.t5b td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.t5b td:first-child,.t5b th:first-child{{text-align:left}}.t5b small{{color:var(--mut);margin-left:3px;font-size:10px}}.crash{{flex:0 1 auto;max-width:100%;overflow-x:auto;box-sizing:border-box;border:2px solid #8e44ad;border-radius:8px;padding:3px 8px;background:var(--card);font-size:12px}}.crash span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.crash table{{font-size:12px;margin-top:2px}}.crash th,.crash td{{padding:1px 4px;border-bottom:1px solid var(--line)}}.crash th.zg{{text-align:center;font-size:10.5px;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line)}}.crash .zl{{border-left:1px dashed var(--line);padding-left:6px}}.hrow{{display:grid;grid-template-columns:auto auto;justify-content:start;grid-template-areas:'dev mid' 'mk mk';gap:10px;align-items:start;margin:-6px 0 -4px}}.hrow>.devb{{grid-area:dev}}.hrow>.rules{{grid-area:rules;max-width:300px}}.hrow>.t5b{{grid-area:top5;margin-top:0;justify-self:start;max-width:100%}}.hrow>.t5b table{{width:auto}}.hrow>.crash{{grid-area:crash;justify-self:start}}.rr{{margin-top:5px}}.rin{{display:inline-block;margin-left:6px;font-size:11.5px}}.rin input{{width:96px;padding:1px 4px;font-size:12px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}}.rt{{border-collapse:collapse;font-size:11.5px;margin-top:2px;width:100%}}.rt th,.rt td{{padding:1px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}.rt td:first-child,.rt th:first-child{{text-align:left}}.rt td.amt{{font-weight:700;color:#1a5fb4}}.motto{{flex:1 1 560px;max-width:960px;display:flex;flex-wrap:wrap;align-items:center;gap:2px 18px;padding:6px 14px;border:1px solid #e6c84f;border-radius:8px;background:var(--yl);font-family:'DFKai-SB','BiauKai','標楷體','Kaiti TC','STKaiti','LXGW WenKai TC',serif;font-size:17px;line-height:1.55}}.motto{{flex-wrap:nowrap;gap:14px}}.motto .mt{{font-size:44px;line-height:1;font-weight:900;color:#c0392b;letter-spacing:4px;padding-right:14px;border-right:3px solid #e6c84f;flex:none;text-shadow:0 1px 0 #fff}}.mi{{display:flex;flex-wrap:wrap;gap:2px 18px}}@media(max-width:640px){{.motto .mt{{font-size:34px}}}}.motto span{{white-space:nowrap}}@media(max-width:640px){{.motto span{{white-space:normal}}}}.pyb{{margin-top:10px;border:2px solid #4d98b8;border-radius:8px;padding:6px 10px;background:var(--card);font-size:13px}}.pyh{{display:flex;align-items:center;gap:8px}}.pyh select{{font:inherit;font-size:12.5px;padding:1px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg);max-width:130px}}.pyh a{{margin-left:auto;font-size:12px;color:#1a5fb4;text-decoration:none}}.pyl{{display:block;margin:5px 0 2px;font-size:12.5px}}.pyl input{{width:130px;padding:2px 6px;font-size:14px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}}.pyt{{width:100%;border-collapse:collapse;font-size:13px}}.pyt th,.pyt td{{padding:3px 4px;border-bottom:1px solid var(--line);text-align:right}}.pyt th:first-child,.pyt td:first-child{{text-align:left;font-weight:700}}.pyt td:last-child,.pyt th:last-child{{text-align:center}}.pyv{{font-weight:700;color:#1a5fb4}}.pyv.demo{{color:var(--mut);font-weight:500}}.pyv.done{{color:#1f8a5b}}.pyf{{display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:12px;color:var(--mut)}}.pyf button{{font:inherit;font-size:12px;padding:2px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);cursor:pointer}}.ddc{{margin-top:10px;border:2px solid #1a5fb4;border-radius:8px;padding:6px 8px;background:var(--card);font-size:13px}}.ddc span{{display:block;font-size:11.5px;color:var(--mut)}}.hrow>.mid{{grid-area:mid;display:grid;grid-template-columns:auto auto;grid-template-areas:'rules top5' 'crash crash';grid-template-rows:1fr auto;gap:10px;justify-self:start;align-self:stretch;align-items:stretch;min-width:0;max-width:100%}}.mid>.rules{{grid-area:rules;max-width:none;min-width:0;display:flex;flex-direction:column;justify-content:space-between}}.mid>.t5b{{grid-area:top5;margin-top:0;min-width:0;max-width:none;display:flex;flex-direction:column}}.mid>.t5b table{{width:100%;flex:1 1 auto}}.mid>.crash{{grid-area:crash;min-width:0;justify-self:stretch}}.mid>.crash table{{width:100%}}.hrow>.mkrow{{grid-area:mk;display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;min-width:0;contain:inline-size}}.altb{{flex:1 1 280px;max-width:none;min-width:270px;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;border:2px solid #f39c12;border-radius:8px;padding:3px 9px;background:var(--card);font-size:12px}}.altb span{{color:var(--mut);font-size:10.5px;margin-left:4px}}.altb table{{font-size:11.5px;margin:2px 0 4px;border-collapse:collapse}}.altb th,.altb td{{padding:2px 3px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}}.altb td:first-child{{text-align:left}}.altc{{margin-top:2px}}@media(max-width:1330px){{.hrow{{justify-content:normal;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 1fr auto auto;grid-template-areas:'dev rules' 'dev top5' 'crash crash' 'mk mk'}}.hrow>.mid{{display:contents}}.mid>.rules{{display:block}}.mid>.t5b{{justify-self:start;max-width:100%;display:block}}.mid>.t5b table{{width:auto}}.altb{{max-width:480px}}}}@media(max-width:980px){{.hrow{{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:'dev' 'rules' 'top5' 'crash' 'mk'}}.hrow>.mid{{display:contents}}.mid>.crash{{display:block}}.hrow>.rules{{max-width:none}}}}.hrow h1{{margin:0}}.devb{{flex:0 0 auto;box-sizing:border-box;border:2px solid #1a5fb4;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.devb b.t{{font-size:12.5px}}.devb .g{{display:grid;grid-template-columns:auto auto;column-gap:14px}}.devb .g div{{display:flex;justify-content:space-between;gap:8px}}.devb i{{font-style:normal;color:var(--mut)}}.devb .spk{{margin-top:3px}}.devb .hiz{{margin-top:3px;color:#d9534f}}.devb .hiz i{{color:var(--mut)}}.devb .prs{{margin-top:2px;font-size:11.5px;width:0;min-width:100%;line-height:1.4}}.devb .ded{{margin-top:3px;font-size:11.5px}}.devb .ded table{{border-collapse:collapse;width:100%}}.devb .ded th,.devb .ded td{{padding:1px 3px;text-align:right;white-space:nowrap;line-height:1.25}}.devb .ded td:first-child{{text-align:left;color:var(--mut)}}.devb .ded small{{color:var(--mut);font-size:10px}}.devb .maw{{font-weight:700}}.devb .mar{{margin-top:4px;padding-top:3px;border-top:1px dashed var(--line);font-size:12.5px}}.devb .x{{color:#d9534f;font-weight:700}}.rules{{flex:0 1 290px;min-width:250px;max-width:300px;box-sizing:border-box;border:2px solid #d9534f;border-radius:8px;padding:3px 9px;font-size:11.5px;line-height:1.4;background:var(--card)}}.rules b.t{{font-size:12.5px}}.rules span{{color:var(--mut)}}
 table{{border-collapse:collapse;font-size:13px;width:100%}}th,td{{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}.wrap{{overflow-x:auto}}.wrap td:first-child,.wrap th:first-child{{position:sticky;left:0;background:var(--bg)}}td.hi{{background:var(--hi)}}td.pk{{background:var(--pk)}}td.gr{{background:var(--gr)}}.neg{{color:#d9534f;font-weight:700}}th.xh{{background:#ffe3a3;color:#222}}
 p.n{{color:var(--mut);font-size:13px}}.gold{{color:#d9534f;font-weight:700}}.dead{{color:#2e9e5b;font-weight:700}}
@@ -1246,11 +1375,11 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <span style="padding:7px 14px;border-radius:999px;background:#222;color:#fff;font-size:14px;font-weight:600">📈 Z-SCORE 與動態 KD</span>
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:7px 14px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
-<a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav>
-<div class=hrow>{dev_html}<div class=mid><div class=rules><div><b class=t>📋 買賣規則</b><span title="目前全部規則:左側 MA220 乖離分批、④ 左側停損、保險 A/B、空手時反1(00632R)25%、中華電 50%、現金 25%,收盤跌破年線再用現金買反1 25%,收盤乖離跌到 MA220−15% 時反1 全賣、改中華電與現金各半。加權指數(不含息)回測至 2026-10-28(6/6 用網站的動態週月KD):近 20 年 18.0%(回撤 −17.0%)、近 15 年 18.8%(−16.0%)、近 10 年 23.9%(−16.0%)。用 00631L(台灣50正2)取代大盤持股(轉出時一樣換反1/中華電/現金;2014/10 上市前以 2 倍日報酬、每年 1.5% 費用模擬):近 20 年 31.9%(回撤 −31.9%)、近 15 年 33.7%(−29.7%)、近 10 年 44.9%(−29.7%)、上市 2014/10 起 39.8%(−29.7%)。對照一直持有:大盤 20 年 10.0%(−58.3%)、00631L 15.0%(−84.9%);00632R 2014 年前為模擬;0050 含息每年約再高 3~4%">　近20年 18.0%(回撤 −17.0%)・00631L 31.9%(−31.9%)</span></div><div title="轉出:6/6 全成立 → 反1(00632R)25%、中華電 50%、現金 25%;收盤第一次跌破年線 MA220 → 用現金再買反1 25%(反1 50%、中華電 50%);之後收盤乖離第一次跌到 MA220−15%,反1 全賣,改中華電、現金各半(空手部位變中華電 75%、現金 25%,左側買進先用這筆現金)。6/6 本段重算:Z 向上穿越 {model.SEG_RESET_Z:g},或加權指數跌破 {model.SEG_MA} 日線至少 {model.SEG_MA_MIN_BELOW} 個交易日後再站回;或右側全部買回當天">① {rk[0]}<b>轉出</b>:6/6 全成立→<b>反1(00632R)25%、中華電 50%、現金 25%</b>;{rk[9]}{rk[10]}→<b>現金買反1 25%</b>;{rk[7]}{rk[8]}→<b>中華電、現金各半</b></div><div title="收盤跌到 MA220 乖離 −15% 買 15%、−20% 再買 15%、−30% 再買 20%(占總資金,左側合計 50%);Z&lt;−2.5 直接補到 50%。舊規則:距一年高點 −10~−30% 分 5 筆 5/7.5/10/12.5/15%">② {rk[1]}<b>左側</b>:{rk[2]}</div><div title="先決(三選一):Z≤0、距一年高點跌 20%、轉出滿 12 個月;成立後已收完月K KD 金叉 → 全部買回。保險(兩種並行):A 收盤跌破買回後最高收盤 20%;B 站上過 MA220 後收盤跌破 MA220×0.99 且年線下彎 → 轉出;轉出後連 3 天站回 MA220 全部買回">③ <b>右側</b>:{rk[3]}跌20%或Z≤0 → {rk[4]}月KD金叉全買</div><div title="收盤跌破左側已買部位平均成本 15% → 左側全部賣出,資金回到空手配置(反1 已賣出時為中華電、現金各半),本次轉出循環不再做左側,只等右側全部買回">④ {rk[5]}<b>左側停損</b>:{rk[6]}</div></div>{top5}{crash}</div><div class=mkrow>{mk_html}{alt}</div></div>
+<a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:14px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a><div class=motto><b class=mt>紀律</b><div class=mi><span>① 高檔時減碼或空手,否則只是紙上富貴</span><span>② 股災時不用慌,不要看損益,按照紀律分批買入</span><span>③ 好好把握!指數長期向上</span><span>④ 漲時賺價差,跌時賺單位數</span><span>⑤ 不要看任何新聞或財經網紅,沒人可以預測漲跌</span><span>⑥ 已經大跌一段後,前一晚夜盤大跌、今天日盤卻只小跌或收紅,可能是止跌訊號!</span></div></div></nav>
+<div class=hrow>{dev_html}<div class=mid>{rules_html}{top5}{crash}</div><div class=mkrow>{mk_html}{alt}</div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
-</div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{calc}</div></div>
+</div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{PYR_HTML}{ddc}</div></div>
 {ins_html(cyc)}
 {trend_html(trend, m.index[-1])}
 <div class=cards>{cards_html}</div>
@@ -1285,7 +1414,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
     box.style.display='none';
   }});
 }})();
-</script></body></html>"""
+</script>{RULES_JS}{PYR_JS}</body></html>"""
     os.makedirs("docs", exist_ok=True)
     with open(OUT_HTML, "w", encoding="utf-8") as f:
         f.write(page)
@@ -1311,7 +1440,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{fxd['text'] if fxd else '美元兌台幣 暫無資料'}\n"
                f"{insd['text'] if insd else '三大法人/外資期貨 暫無資料'}\n"
                f"過熱轉弱警示 {sum(wok)}/6:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}|90>120~150>180曾全BUY {mk(wok[5])}\n"
-               f"⚠ 6/6 成立須轉出：反1(00632R)25%、中華電 50%、現金 25%!!(破年線現金加買反1 25%;乖離−15% 時反1 改中華電、現金各半){'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
+               f"⚠ 6/6 成立須轉出：反1(00632R)、中華電 各半!!(之後跌 15/20/25/30% 分批轉回股票){'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
                + "".join(f"    {t}\n" for t in cyl + insl) +
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
