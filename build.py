@@ -548,12 +548,12 @@ def inv_line(cy):
 def simple_lines(sr):
     """簡化規則 ②③ 的提示(今天新達成的放最前面)"""
     L = [f"⚠ 今日跌破 −{st['x']:.0%}({st['px']:,.0f}):請把 {st['w']:.0%} 轉回股票" for st in sr["steps"] if st["new"]]
-    L += [f"⚠ 今日{c_['nm']}成立:請買回 1/3" for c_ in sr["conds"] if c_["new"]]
+    L += [f"⚠ 今日{c_['nm']}成立:請買回 1/{len(sr['conds'])}" for c_ in sr["conds"] if c_["new"]]
     nx = sr["nxt"]
     L.append(f"② 跌幅 {sr['dd']:+.1%}(最高 {sr['hi']:,.0f}):已轉換 {sr['conv']:.0%}"
              + (f";下一檔 −{nx['x']:.0%}({nx['px']:,.0f})轉 {nx['w']:.0%}" if nx else ";已全部轉換"))
     n3 = sum(c_["ok"] for c_ in sr["conds"])
-    L.append(f"③ 買回 {n3}/3:" + "、".join(f"{c_['nm']}{'☑' if c_['ok'] else '☐'}" for c_ in sr["conds"]))
+    L.append(f"③ 買回 {n3}/{len(sr['conds'])}:" + "、".join(f"{c_['nm']}{'☑' if c_['ok'] else '☐'}" for c_ in sr["conds"]))
     return L
 
 
@@ -588,8 +588,8 @@ def cycle_short(cy):
         return f"今日跌破−{new[-1]['x']:.0%},請轉{sum(st['w'] for st in new):.0%}回股票"
     nc = [c_ for c_ in sr["conds"] if c_["new"]]
     if nc:
-        return f"今日{nc[0]['nm']},請買回1/3"
-    return f"已轉出{cy['n']}日｜跌幅{sr['dd']:+.0%}｜已轉{sr['conv']:.0%}｜買回{sum(c_['ok'] for c_ in sr['conds'])}/3"
+        return f"今日{nc[0]['nm']},請買回1/{len(sr['conds'])}"
+    return f"已轉出{cy['n']}日｜跌幅{sr['dd']:+.0%}｜已轉{sr['conv']:.0%}｜買回{sum(c_['ok'] for c_ in sr['conds'])}/{len(sr['conds'])}"
 
 
 def z_level(closes, target, n=480):
@@ -774,8 +774,7 @@ def simple_state(m, df, cy, mc):
     since = m.loc[cy["exit"]:] if out and cy.get("exit") is not None else m.iloc[0:0]
     a9 = (sum((since[cc] == "BUY").astype(int) for cc in XCOLS[:9]) == 9) if len(since) else pd.Series(dtype=bool)
     up2 = bool(cl.iloc[-1] >= ma.iloc[-1] * 1.02)
-    conds = [dict(nm="已收完月KD 金叉", det=f"K {mc['K']:.1f} / D {mc['D']:.1f}", ok=gold, new=gold and mc["date"] == m.index[-1]),
-             dict(nm="收盤站上 MA220+2%", det=f"{ma.iloc[-1] * 1.02:,.0f}(現 {cl.iloc[-1]:,.0f})", ok=up2,
+    conds = [dict(nm="收盤站上 MA220+2%", det=f"{ma.iloc[-1] * 1.02:,.0f}(現 {cl.iloc[-1]:,.0f})", ok=up2,
                   new=up2 and bool(cl.iloc[-2] < ma.iloc[-2] * 1.02)),
              dict(nm="轉出後 9 欄曾全 BUY", det="5>10…80>90 同時 BUY", ok=bool(a9.any()) if len(a9) else False,
                   new=bool(len(a9)) and bool(a9.iloc[-1]) and not bool(a9.iloc[:-1].any()))]
@@ -789,14 +788,14 @@ def rules_simple(sr, cy):
     out = sr["out"]
     r2 = "".join(f"<tr><td>−{st['x']:.0%}</td><td>{st['px']:,.0f}</td><td>{st['w']:.0%}</td><td class=amt data-k=q2 data-w='{st['w']}'>—</td><td>{ck(st['ok'])}</td></tr>"
                  for st in sr["steps"])
-    r3 = "".join(f"<tr><td>{c_['nm']}</td><td>{c_['det']}</td><td>1/3</td><td class=amt data-k=q3 data-w='{1/3}'>—</td><td>{ck(c_['ok'])}</td></tr>" for c_ in sr["conds"])
+    r3 = "".join(f"<tr><td>{c_['nm']}</td><td>{c_['det']}</td><td>1/{len(sr['conds'])}</td><td class=amt data-k=q3 data-w='{1 / len(sr["conds"])}'>—</td><td>{ck(c_['ok'])}</td></tr>" for c_ in sr["conds"])
     return (f"<div class=rules><div><b class=t>📋 買賣規則(簡化版)</b> <span>容易執行優先</span></div>"
             f"<div class=rr>{ck(out)} <b>① 轉出</b>:6/6 全成立 → <b>反1(00632R)、中華電 各半</b>"
             + (f" <small>({cy['exit']:%m/%d} 轉出)</small>" if out and cy.get("exit") is not None else "") + "</div>"
             f"<div class=rr><b>② 跌幅轉換</b> <small>最高收盤 {sr['hi']:,.0f}({sr['hi_i']:%m/%d})→ 最低價 {sr['lo']:,.0f},跌幅 <b>{sr['dd']:+.1%}</b>;賣反1/中華電換回股票</small>"
             f"<label class=rin>總金額 <input id=q2 inputmode=numeric placeholder='輸入金額'></label>"
             f"<table class=rt><tr><th>跌幅</th><th>價位</th><th>比例</th><th>金額</th><th></th></tr>{r2}</table></div>"
-            f"<div class=rr><b>③ 買回</b> <small>任一條件成立就買該條件的 1/3</small>"
+            f"<div class=rr><b>③ 買回</b> <small>任一條件成立就買一半</small>"
             f"<label class=rin>總金額 <input id=q3 inputmode=numeric placeholder='輸入金額'></label>"
             f"<table class=rt><tr><th>條件</th><th>目前</th><th>比例</th><th>金額</th><th></th></tr>{r3}</table></div></div>")
 
