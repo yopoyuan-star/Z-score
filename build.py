@@ -563,11 +563,11 @@ def cycle_lines(cy, z):
         return [f"保險A:收盤跌破 {cy['stop_px']:,.0f}(買回後最高 {cy['top']:,.0f} 的 −20%)→ 轉出"] if cy["stop_px"] else []
     if cy["maout"]:
         i_ = cy["ins"]; nm = "保險 A(高點−20%)" if cy["why"] == "A" else "保險 B(MA220)"
-        return [(f"今日{nm}成立,請轉出:反1(00632R)、中華電 各半" if cy["n"] == 0 else
+        return [(f"今日{nm}成立,請轉出:反1(00632R)、現金 各半" if cy["n"] == 0 else
                  f"{nm}轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)"),
                 f"連 {INS_DAYS} 天收盤站回 MA220({i_['ma']:,.0f})→ 全部買回;目前 {min(i_['up'], INS_DAYS)}/{INS_DAYS}"]
-    head = ("今日 6/6 成立,請轉出:反1(00632R)、中華電 各半" if cy["n"] == 0 and cy["why"] == "6/6" else
-            f"已轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起),反1、中華電各半")
+    head = ("今日 6/6 成立,請轉出:反1(00632R)、現金 各半" if cy["n"] == 0 and cy["why"] == "6/6" else
+            f"已轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起),反1、現金各半")
     return [head] + (simple_lines(cy["sr"]) if cy.get("sr") else [])
 
 
@@ -576,7 +576,7 @@ def cycle_short(cy):
     if cy["state"] == "持有":
         return f"保險:跌破 {cy['stop_px']:,.0f} 再轉出" if cy["stop_px"] else ""
     if cy["n"] == 0 and cy["why"] == "6/6":
-        return "今日 6/6 成立,請轉出:反1、中華電各半"
+        return "今日 6/6 成立,請轉出:反1、現金各半"
     if cy["maout"]:
         return (f"今日保險 {cy['why']} 成立,請轉出" if cy["n"] == 0 else
                 f"保險{cy['why']}轉出{cy['n']}日｜站回MA220 {min(cy['ins']['up'], INS_DAYS)}/{INS_DAYS}")
@@ -790,9 +790,9 @@ def rules_simple(sr, cy):
                  for st in sr["steps"])
     r3 = "".join(f"<tr><td>{c_['nm']}</td><td>{c_['det']}</td><td>1/{len(sr['conds'])}</td><td class=amt data-k=q3 data-w='{1 / len(sr["conds"])}'>—</td><td>{ck(c_['ok'])}</td></tr>" for c_ in sr["conds"])
     return (f"<div class=rules><div><b class=t>📋 買賣規則(簡化版)</b> <span>容易執行優先</span></div>"
-            f"<div class=rr>{ck(out)} <b>① 轉出</b>:6/6 全成立 → <b>反1(00632R)、中華電 各半</b>"
+            f"<div class=rr>{ck(out)} <b>① 轉出</b>:6/6 全成立 → <b>反1(00632R)、現金 各半</b>"
             + (f" <small>({cy['exit']:%m/%d} 轉出)</small>" if out and cy.get("exit") is not None else "") + "</div>"
-            f"<div class=rr><b>② 跌幅轉換</b> <small>最高收盤 {sr['hi']:,.0f}({sr['hi_i']:%m/%d})→ 最低價 {sr['lo']:,.0f},跌幅 <b>{sr['dd']:+.1%}</b>;賣反1/中華電換回股票</small>"
+            f"<div class=rr><b>② 跌幅轉換</b> <small>最高收盤 {sr['hi']:,.0f}({sr['hi_i']:%m/%d})→ 最低價 {sr['lo']:,.0f},跌幅 <b>{sr['dd']:+.1%}</b>;賣反1、用現金換回股票</small>"
             f"<label class=rin>總金額 <input id=q2 inputmode=numeric placeholder='輸入金額'></label>"
             f"<table class=rt><tr><th>跌幅</th><th>價位</th><th>比例</th><th>金額</th><th></th></tr>{r2}</table></div>"
             f"<div class=rr><b>③ 買回</b> <small>任一條件成立就買一半</small>"
@@ -1330,7 +1330,7 @@ def main():
     wnote = ((f"本段自 {wstart:%Y-%m-%d} 全部買回重算" if wstart_ma == "buy" else
               f"本段自 {wstart:%Y-%m-%d} 站回 MA{model.SEG_MA}" if wstart_ma == "ma" else f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}")
              if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
-    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：反1(00632R)、中華電 各半!!(之後跌 15/20/25/30% 分批轉回股票){cyl_html}</div>"))
+    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：反1(00632R)、現金 各半!!(之後跌 15/20/25/30% 分批轉回股票){cyl_html}</div>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>" + (f"<small>高點後最低 {lo_px:,.2f}({lo_dt:%Y-%m-%d})|最大跌幅 <b style='color:#d9534f'>{lo_dd:+.1%}</b></small>" if lo_dd < 0 else "")))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
@@ -1525,7 +1525,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{fxd['text'] if fxd else '美元兌台幣 暫無資料'}\n"
                f"{insd['text'] if insd else '三大法人/外資期貨 暫無資料'}\n"
                f"過熱轉弱警示 {sum(wok)}/6:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}|90>120~150>180曾全BUY {mk(wok[5])}\n"
-               f"⚠ 6/6 成立須轉出：反1(00632R)、中華電 各半!!(之後跌 15/20/25/30% 分批轉回股票){'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
+               f"⚠ 6/6 成立須轉出：反1(00632R)、現金 各半!!(之後跌 15/20/25/30% 分批轉回股票){'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
                + "".join(f"    {t}\n" for t in cyl + insl) +
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
