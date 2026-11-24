@@ -640,6 +640,91 @@ window.addEventListener('storage',function(e){if(e.key===KEY){load();opts();rend
 DD_STEPS = [(0.15, 0.20), (0.20, 0.25), (0.25, 0.25), (0.30, 0.30)]   # 簡化版 ②:最高點到最低點跌幅 → 轉換比例(合計 100%)
 
 
+VOL_CSV = "data/twvol.csv"     # 大盤每日成交金額(億元),證交所 FMTQIK,只補缺的月份
+
+
+def tw_volume(df, months=16):
+    """回傳每日成交金額(億元) Series;快取在 data/twvol.csv,每次只抓缺少的月份和當月"""
+    import json, time, urllib.request
+    try:
+        old = pd.read_csv(VOL_CSV, parse_dates=["Date"]).set_index("Date")["Amt"] if os.path.exists(VOL_CSV) else pd.Series(dtype=float)
+    except Exception:
+        old = pd.Series(dtype=float)
+    end = df.index[-1]; got = dict(old.items())
+    have = {(d.year, d.month) for d in old.index}
+    for k in range(months - 1, -1, -1):
+        mth = (end.to_period("M") - k).to_timestamp()
+        if (mth.year, mth.month) in have and k > 0:
+            continue
+        try:
+            req = urllib.request.Request(f"https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={mth:%Y%m}01&response=json", headers={"User-Agent": "Mozilla/5.0"})
+            js = json.loads(urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore"))
+            tb = js.get("tables") or [{"fields": js.get("fields"), "data": js.get("data")}]
+            for t in tb:
+                f = t.get("fields") or []; data = t.get("data") or []
+                if not f or "成交金額" not in "".join(map(str, f)): continue
+                ia = next(i for i, x in enumerate(f) if "成交金額" in str(x))
+                for r in data:
+                    y, mo, dd = str(r[0]).strip().split("/")
+                    got[pd.Timestamp(int(y) + 1911, int(mo), int(dd))] = float(str(r[ia]).replace(",", "")) / 1e8
+            time.sleep(1.5)
+        except Exception as e:
+            print("成交金額抓取失敗", mth.strftime("%Y-%m"), e)
+    ser = pd.Series(got, dtype=float).sort_index()
+    try:
+        if len(ser):
+            os.makedirs("data", exist_ok=True); ser.rename("Amt").rename_axis("Date").to_frame().to_csv(VOL_CSV, float_format="%.2f")
+    except Exception as e:
+        print("成交金額存檔失敗", e)
+    return ser
+
+
+def week_chart(df, vol):
+    """台股週K:近一年最高點往前半年到今天,含 MA48 週線與每週成交金額"""
+    try:
+        c = df.Close; hi_i = c.iloc[-250:].idxmax()
+        wk = df.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"}).dropna()
+        wk["MA48"] = wk.Close.rolling(48).mean()
+        if len(vol): wk["Vol"] = vol.resample("W-FRI").sum().reindex(wk.index)
+        else: wk["Vol"] = np.nan
+        w = wk.loc[hi_i - pd.DateOffset(months=6):]
+        n = len(w); W_, L_, R_ = 330, 6, 46; PT, PH, VT, VH, H_ = 6, 190, 206, 62, 284
+        lo_, hi_ = float(min(w.Low.min(), w.MA48.min())), float(max(w.High.max(), w.MA48.max())); pad = (hi_ - lo_) * .04; lo_ -= pad; hi_ += pad
+        bw = (W_ - L_ - R_) / n; x_ = lambda i: L_ + bw * (i + .5)
+        y_ = lambda v: PT + PH * (hi_ - v) / (hi_ - lo_)
+        vmax = float(w.Vol.max()) if w.Vol.notna().any() else 0
+        out = ""
+        for k in range(5):                                         # 價格刻度
+            v = lo_ + (hi_ - lo_) * k / 4
+            out += (f"<line x1='{L_}' x2='{W_ - R_}' y1='{y_(v):.1f}' y2='{y_(v):.1f}' stroke='var(--line)' stroke-width='.6'/>"
+                    f"<text x='{W_ - R_ + 3}' y='{y_(v) + 3:.1f}' font-size='9.5' fill='var(--mut)'>{v:,.0f}</text>")
+        for i, (d, r) in enumerate(w.iterrows()):
+            up = r.Close >= r.Open; col = "#d9534f" if up else "#2e9e5b"
+            out += f"<line x1='{x_(i):.1f}' x2='{x_(i):.1f}' y1='{y_(r.High):.1f}' y2='{y_(r.Low):.1f}' stroke='{col}' stroke-width='1'/>"
+            yt, yb = y_(max(r.Open, r.Close)), y_(min(r.Open, r.Close))
+            out += f"<rect x='{x_(i) - bw * .36:.1f}' y='{yt:.1f}' width='{bw * .72:.1f}' height='{max(yb - yt, .8):.1f}' fill='{col}'/>"
+            if vmax and r.Vol == r.Vol:
+                vh = VH * r.Vol / vmax
+                out += f"<rect x='{x_(i) - bw * .36:.1f}' y='{VT + VH - vh:.1f}' width='{bw * .72:.1f}' height='{vh:.1f}' fill='{col}' opacity='.55'/>"
+        out += ("<polyline points='" + " ".join(f"{x_(i):.1f},{y_(v):.1f}" for i, v in enumerate(w.MA48) if v == v)
+                + "' fill='none' stroke='#8e44ad' stroke-width='1.6'/>")
+        hi_w = w.index.get_indexer([w.High.idxmax()])[0]
+        out += f"<text x='{x_(hi_w):.1f}' y='{y_(w.High.max()) - 2:.1f}' font-size='9.5' fill='#d9534f' text-anchor='middle'>{w.High.max():,.0f}</text>"
+        if vmax:
+            out += (f"<line x1='{L_}' x2='{W_ - R_}' y1='{VT + VH}' y2='{VT + VH}' stroke='var(--line)'/>"
+                    f"<text x='{W_ - R_ + 3}' y='{VT + 9}' font-size='9.5' fill='var(--mut)'>{vmax:,.0f}億</text>")
+        out += (f"<text x='{L_}' y='{H_ - 2}' font-size='9.5' fill='var(--mut)'>{w.index[0]:%y/%m}</text>"
+                f"<text x='{x_(n // 2):.1f}' y='{H_ - 2}' font-size='9.5' fill='var(--mut)' text-anchor='middle'>{w.index[n // 2]:%y/%m}</text>"
+                f"<text x='{W_ - R_}' y='{H_ - 2}' font-size='9.5' fill='var(--mut)' text-anchor='end'>{w.index[-1]:%m/%d}</text>")
+        last = w.iloc[-1]; ma48 = float(last.MA48)
+        vtxt = f"・本週成交 {last.Vol:,.0f} 億" if last.Vol == last.Vol and vmax else ""
+        return (f"<div class=ddc title='台股週K(紅漲綠跌),紫線=MA48 週線;下方=每週成交金額(證交所,億元)'>"
+                f"<b>📊 台股週線</b> <span>收 {last.Close:,.0f}・<b style='color:#8e44ad'>MA48 週 {ma48:,.0f}</b>({last.Close / ma48 - 1:+.1%}){vtxt}</span>"
+                f"<svg viewBox='0 0 {W_} {H_}' width='100%' style='display:block'>{out}</svg></div>")
+    except Exception as e:
+        print("週線圖失敗", e); return ""
+
+
 def dd_chart(df):
     """台股一年最高收盤日起到今天的收盤走勢,加上 −15%~−50% 價位線(跌破的線變深色)"""
     try:
@@ -1235,6 +1320,7 @@ def main():
         _extra = cyc["backs"]
     cyc['sr'] = simple_state(m, df, cyc, mc)
     ddc = dd_chart(df)
+    wkc = week_chart(df, tw_volume(df))
     cyl = cycle_lines(cyc, z)
     insl = ins_lines(cyc)
     _tip = "\n".join(cyl).replace("'", "")
@@ -1379,7 +1465,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <div class=hrow>{dev_html}<div class=mid>{rules_html}{top5}{crash}</div><div class=mkrow>{mk_html}{alt}</div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
-</div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{PYR_HTML}{ddc}</div></div>
+</div><div class=memo><div class=mh><b>📝 筆記</b><button type=button id=zmemoclr>清除筆記</button></div><textarea id=zmemo maxlength=3000 placeholder="在這裡做筆記(自動儲存在這個瀏覽器)"></textarea>{PYR_HTML}{ddc}{wkc}</div></div>
 {ins_html(cyc)}
 {trend_html(trend, m.index[-1])}
 <div class=cards>{cards_html}</div>
