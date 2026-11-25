@@ -622,28 +622,73 @@ QUOTE_JSON = "data/quotes.json"   # 上市+上櫃全部股票/ETF 最新收盤 {
 
 
 def all_quotes():
-    """證交所 STOCK_DAY_ALL + 櫃買中心每日收盤;抓不到就用上次存檔"""
+    """全部上市+上櫃股票/ETF 最新收盤 {代號: [名稱, 收盤, 民國日期 YYYMMDD]}
+    先抓證交所/櫃買中心「當日行情」(收盤後約 14:30 就有),抓不到再用 OpenAPI(常晚一天),最後才用上次存檔"""
     import json as _j, urllib.request
-    q = {}
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
     def get(url):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
         return _j.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore"))
     def num(v):
-        try: return float(str(v).replace(",", ""))
-        except Exception: return None
-    try:
-        for r in get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"):
-            v = num(r.get("ClosingPrice"))
-            if v: q[str(r.get("Code", "")).strip()] = [str(r.get("Name", "")).strip(), v, str(r.get("Date", ""))]
-    except Exception as e:
-        print("上市收盤抓取失敗", e)
-    try:
-        for r in get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"):
-            v = num(r.get("Close"))
-            code = str(r.get("SecuritiesCompanyCode", "")).strip()
-            if v and code and code not in q: q[code] = [str(r.get("CompanyName", "")).strip(), v, str(r.get("Date", ""))]
-    except Exception as e:
-        print("上櫃收盤抓取失敗", e)
+        try:
+            x = float(str(v).replace(",", "").strip()); return x if x > 0 else None
+        except Exception:
+            return None
+    roc = lambda d: f"{d.year - 1911}{d:%m%d}"
+    q, got_tw, got_otc = {}, None, None
+    today = _dt.now(_tz(_td(hours=8))).date()
+    for k in range(6):                                              # 今天沒有(休市/還沒公布)就往前找
+        d = today - _td(days=k)
+        if d.weekday() >= 5: continue
+        if got_tw is None:
+            try:
+                js = get(f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={d:%Y%m%d}&type=ALLBUT0999&response=json")
+                if js.get("stat") in (None, "OK"):
+                    tabs = [(t.get("fields"), t.get("data")) for t in js.get("tables", []) if isinstance(t, dict)]
+                    for f, data in tabs:
+                        if not f or not data: continue
+                        f = [str(x) for x in f]
+                        if not any("證券代號" in x for x in f) or not any("收盤價" in x for x in f): continue
+                        ic = next(i for i, x in enumerate(f) if "證券代號" in x); inm = next(i for i, x in enumerate(f) if "證券名稱" in x)
+                        ip = next(i for i, x in enumerate(f) if "收盤價" in x)
+                        n0 = len(q)
+                        for r in data:
+                            v = num(r[ip]) if len(r) > ip else None
+                            if v: q[str(r[ic]).strip()] = [str(r[inm]).strip(), v, roc(d)]
+                        if len(q) - n0 > 500: got_tw = d; break
+            except Exception as e:
+                print("證交所當日行情抓取失敗", d, e)
+        if got_otc is None:
+            try:
+                js = get(f"https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?date={d:%Y/%m/%d}&type=EW&response=json")
+                for t in js.get("tables", []):
+                    f = [str(x) for x in (t.get("fields") or [])]; data = t.get("data") or []
+                    if not data or not any("代號" in x for x in f) or not any("收盤" in x for x in f): continue
+                    ic = next(i for i, x in enumerate(f) if "代號" in x); inm = next(i for i, x in enumerate(f) if "名稱" in x)
+                    ip = next(i for i, x in enumerate(f) if "收盤" in x)
+                    n0 = len(q)
+                    for r in data:
+                        code = str(r[ic]).strip(); v = num(r[ip]) if len(r) > ip else None
+                        if v and code not in q: q[code] = [str(r[inm]).strip(), v, roc(d)]
+                    if len(q) - n0 > 300: got_otc = d; break
+            except Exception as e:
+                print("櫃買中心當日行情抓取失敗", d, e)
+        if got_tw and got_otc: break
+    if got_tw is None:                                              # 備援:OpenAPI(更新較慢)
+        try:
+            for r in get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"):
+                v = num(r.get("ClosingPrice"))
+                if v: q.setdefault(str(r.get("Code", "")).strip(), [str(r.get("Name", "")).strip(), v, str(r.get("Date", ""))])
+        except Exception as e:
+            print("上市收盤(OpenAPI)抓取失敗", e)
+    if got_otc is None:
+        try:
+            for r in get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"):
+                v = num(r.get("Close")); code = str(r.get("SecuritiesCompanyCode", "")).strip()
+                if v and code: q.setdefault(code, [str(r.get("CompanyName", "")).strip(), v, str(r.get("Date", ""))])
+        except Exception as e:
+            print("上櫃收盤(OpenAPI)抓取失敗", e)
+    print(f"收盤價:上市 {got_tw or 'OpenAPI'}、上櫃 {got_otc or 'OpenAPI'},共 {len(q)} 檔")
     try:
         if len(q) > 500:
             os.makedirs("data", exist_ok=True); _j.dump(q, open(QUOTE_JSON, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
@@ -652,52 +697,6 @@ def all_quotes():
     except Exception as e:
         print("收盤價存檔/讀檔失敗", e)
     return q
-
-
-HV_JS = """<script>(function(){
-document.querySelectorAll('svg[data-hv]').forEach(function(sv){
- var o;try{o=JSON.parse(sv.getAttribute('data-hv'))}catch(e){return}
- var n=o.d.length;if(n<2)return;var par=sv.parentNode;if(getComputedStyle(par).position==='static')par.style.position='relative';
- var ns='http://www.w3.org/2000/svg',ln=document.createElementNS(ns,'line');ln.setAttribute('y1',0);ln.setAttribute('y2',sv.viewBox.baseVal.height);
- ln.setAttribute('stroke','#888');ln.setAttribute('stroke-width','.8');ln.setAttribute('stroke-dasharray','3 2');ln.style.display='none';sv.appendChild(ln);
- var bx=document.createElement('div');bx.className='hvbox';par.appendChild(bx);
- var note=par.closest('[data-note]');note=note?note.getAttribute('data-note'):'';
- function at(ev){var r=sv.getBoundingClientRect(),cx=(ev.touches?ev.touches[0].clientX:ev.clientX),x=(cx-r.left)/r.width*o.w;
-  var i=Math.round((x-o.x0)/(o.x1-o.x0)*(n-1));i=Math.max(0,Math.min(n-1,i));var vx=o.x0+(o.x1-o.x0)*i/(n-1);
-  ln.setAttribute('x1',vx);ln.setAttribute('x2',vx);ln.style.display='';
-  bx.innerHTML=o.d[i].split('\\n').map(function(t,k){return k?t:'<b>'+t+'</b>'}).join('<br>');bx.style.display='block';
-  var pr=par.getBoundingClientRect(),px=r.left-pr.left+vx*r.width/o.w;bx.style.top=(r.top-pr.top+4)+'px';
-  bx.style.left=(px>pr.width/2?Math.max(0,px-bx.offsetWidth-8):Math.min(pr.width-bx.offsetWidth,px+8))+'px'}
- sv.addEventListener('mousemove',at);sv.addEventListener('click',at);sv.addEventListener('touchstart',at,{passive:true});
- sv.addEventListener('mouseleave',function(){bx.style.display='none';ln.style.display='none'});
- if(note)sv.setAttribute('aria-label',note);
-});
-document.addEventListener('click',function(e){if(!e.target.closest('svg[data-hv]'))document.querySelectorAll('.hvbox').forEach(function(b){b.style.display='none'})});
-})();</script>"""
-
-
-SYNC_KEYS = ["expo-v1", "rule_q0", "rule_qr", "pyramid-plans-v1", "pyramid-cur"]
-SYNC_JS = """<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script>(function(){
-var KEYS=""" + json.dumps(SYNC_KEYS) + """;
-function enc(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')}
-function dec(t){t=t.replace(/-/g,'+').replace(/_/g,'/');while(t.length%4)t+='=';return JSON.parse(decodeURIComponent(escape(atob(t))))}
-var h=location.hash;
-if(h.indexOf('#sync=')===0){try{var o=dec(h.slice(6));
- if(confirm('要把另一台裝置的設定(曝險計算、買賣規則總資金、金字塔)套用到這台裝置嗎?\\n這台原本的這些設定會被取代。')){
-  Object.keys(o).forEach(function(k){if(KEYS.indexOf(k)>=0){try{localStorage.setItem(k,o[k])}catch(e){}}});
-  history.replaceState(null,'',location.pathname);location.reload();return}
- history.replaceState(null,'',location.pathname)}catch(e){alert('同步連結讀取失敗')}}
-var b=document.getElementById('syncbtn');if(!b)return;var box=document.getElementById('syncbox');
-b.addEventListener('click',function(){var o={};KEYS.forEach(function(k){try{var v=localStorage.getItem(k);if(v!=null)o[k]=v}catch(e){}});
- var url=location.origin+location.pathname+'#sync='+enc(o);document.getElementById('synclink').value=url;
- var q=document.getElementById('syncqr');q.innerHTML='';
- if(window.QRCode){try{new QRCode(q,{text:url,width:200,height:200,correctLevel:QRCode.CorrectLevel.L})}catch(e){q.textContent='資料太多,無法做成 QR code,請用複製連結'}}
- else q.textContent='QR code 載入失敗,請用複製連結';
- box.style.display='block'});
-document.getElementById('synccopy').addEventListener('click',function(){var i=document.getElementById('synclink');i.select();
- try{navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}this.textContent='已複製'});
-document.getElementById('syncclose').addEventListener('click',function(){box.style.display='none'});
-})();</script>"""
 
 
 EXPO_HTML = ("<div class=exb><div class=exh><b>📊 曝險計算</b><span id=exdate></span><button type=button id=syncbtn title='把這台裝置的設定(曝險、買賣規則總資金、金字塔)做成連結/QR code,用手機開啟就能套用'>📱 同步</button></div>"
