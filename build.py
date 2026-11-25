@@ -838,7 +838,7 @@ def wk_last(df, d):
     return s_[-1] if len(s_) else d
 
 
-def week_chart(df, vol, W_=460, H_=262):
+def week_chart(df, vol, W_=460, H_=340):
     """台股週K:近一年最高點往前半年到今天,含 MA48 週線與每週成交金額"""
     try:
         c = df.Close; hi_i = c.iloc[-250:].idxmax()
@@ -846,8 +846,14 @@ def week_chart(df, vol, W_=460, H_=262):
         wk["MA48"] = wk.Close.rolling(48).mean()
         if len(vol): wk["Vol"] = vol.resample("W-FRI").sum().reindex(wk.index)
         else: wk["Vol"] = np.nan
+        # 收完週KD:只用已收完的週(今天不是週五就排除本週),9 週 RSV,K=2/3K+1/3RSV,D=2/3D+1/3K
+        wc = wk if df.index[-1].weekday() >= 4 else wk.iloc[:-1]
+        rsv = ((wc.Close - wc.Low.rolling(9).min()) / (wc.High.rolling(9).max() - wc.Low.rolling(9).min()) * 100).fillna(50)
+        Kc, Dc = [], []; k_, d_ = 50.0, 50.0
+        for v in rsv: k_ = k_ * 2 / 3 + v / 3; d_ = d_ * 2 / 3 + k_ / 3; Kc.append(k_); Dc.append(d_)
+        wk["cK"] = pd.Series(Kc, index=wc.index).reindex(wk.index); wk["cD"] = pd.Series(Dc, index=wc.index).reindex(wk.index)
         w = wk.loc[hi_i - pd.DateOffset(months=6):]
-        n = len(w); L_, R_ = 6, 50; PT = 8; VH = int(H_ * .2); PH = H_ - VH - 34; VT = PT + PH + 10
+        n = len(w); L_, R_ = 6, 50; PT = 8; VH = 54; KH = 58; PH = H_ - VH - KH - 46; VT = PT + PH + 10; KT = VT + VH + 14
         lo_, hi_ = float(min(w.Low.min(), w.MA48.min())), float(max(w.High.max(), w.MA48.max())); pad = (hi_ - lo_) * .04; lo_ -= pad; hi_ += pad
         bw = (W_ - L_ - R_) / n; x_ = lambda i: L_ + bw * (i + .5)
         y_ = lambda v: PT + PH * (hi_ - v) / (hi_ - lo_)
@@ -874,8 +880,17 @@ def week_chart(df, vol, W_=460, H_=262):
             ch = (float(r.Close) / pcw - 1) if pcw == pcw else None
             info.append(f"{ws[d]:%Y/%m/%d}~{wk_last(df, d):%m/%d}|{r.Open:,.0f}|{r.High:,.0f}|{r.Low:,.0f}|{r.Close:,.0f}|"
                         + (f"{ch:+.2%}" if ch is not None else "—") + "|" + (f"{r.Vol:,.0f}" if r.Vol == r.Vol else "—")
-                        + "|" + (f"{r.MA48:,.0f}" if r.MA48 == r.MA48 else "—") + "|" + ("u" if (ch or 0) >= 0 else "d"))
-        out += f"<line class=wkx x1='0' x2='0' y1='{PT}' y2='{VT + VH}' stroke='var(--mut)' stroke-width='.8' stroke-dasharray='3 2' style='display:none'/>"
+                        + "|" + (f"{r.MA48:,.0f}" if r.MA48 == r.MA48 else "—") + "|" + ("u" if (ch or 0) >= 0 else "d")
+                        + "|" + (f"{r.cK:.1f} / D {r.cD:.1f}" if r.cK == r.cK else "本週未收完"))
+        ky = lambda v: KT + KH * (100 - v) / 100
+        out += (f"<rect x='{L_}' y='{ky(20):.1f}' width='{W_ - L_ - R_}' height='{ky(0) - ky(20):.1f}' fill='#2e9e5b' opacity='.08'/>"
+                f"<rect x='{L_}' y='{ky(100):.1f}' width='{W_ - L_ - R_}' height='{ky(80) - ky(100):.1f}' fill='#d9534f' opacity='.08'/>"
+                + "".join(f"<line x1='{L_}' x2='{W_ - R_}' y1='{ky(v):.1f}' y2='{ky(v):.1f}' stroke='var(--line)' stroke-width='.6' stroke-dasharray='2 2'/>"
+                          f"<text x='{W_ - R_ + 3}' y='{ky(v) + 3:.1f}' font-size='9' fill='var(--mut)'>{v}</text>" for v in (20, 50, 80))
+                + "".join("<polyline points='" + " ".join(f"{x_(i):.1f},{ky(v):.1f}" for i, v in enumerate(w[col]) if v == v)
+                          + f"' fill='none' stroke='{colr}' stroke-width='1.4'/>" for col, colr in (("cD", "#e67e22"), ("cK", "#1a5fb4")))
+                + f"<text x='{L_ + 2}' y='{KT - 3}' font-size='9.5' fill='var(--mut)'>收完週KD <tspan fill='#1a5fb4'>━K</tspan> <tspan fill='#e67e22'>━D</tspan></text>")
+        out += f"<line class=wkx x1='0' x2='0' y1='{PT}' y2='{KT + KH}' stroke='var(--mut)' stroke-width='.8' stroke-dasharray='3 2' style='display:none'/>"
         out += "".join(f"<rect class=wkh data-i='{i}' x='{x_(i) - bw / 2:.1f}' y='0' width='{bw:.1f}' height='{H_}' fill='transparent'/>" for i in range(n))
         hi_w = w.index.get_indexer([w.High.idxmax()])[0]
         out += f"<text x='{x_(hi_w):.1f}' y='{y_(w.High.max()) - 2:.1f}' font-size='9.5' fill='#d9534f' text-anchor='middle'>{w.High.max():,.0f}</text>"
@@ -896,10 +911,13 @@ def week_chart(df, vol, W_=460, H_=262):
                  f"<b style='color:{cc}'>{float(t.Close) - pc:+,.2f}({chg:+.2%})</b>"
                  f"<span>本週 {wchg:+.2%}</span></div>")
         vtxt = f"・本週成交 {last.Vol:,.0f} 億" if last.Vol == last.Vol and vmax else ""
+        lk = wk.dropna(subset=["cK"]).iloc[-1]; kc_ = "#d9534f" if lk.cK > lk.cD else "#2e9e5b"
+        vtxt += (f"<br>收完週KD(至 {wk_last(df, lk.name):%m/%d} 週) <b style='color:#1a5fb4'>K {lk.cK:.1f}</b> / <b style='color:#e67e22'>D {lk.cD:.1f}</b> "
+                 f"<b style='color:{kc_}'>{'金叉' if lk.cK > lk.cD else '死叉'}</b>")
         js = ("<script>(function(){var b=document.currentScript.parentNode,sv=b.querySelector('svg'),bx=b.querySelector('.wkinfo'),ln=sv.querySelector('.wkx');"
               "var D=" + json.dumps(info, ensure_ascii=False) + ";"
               "function show(i,x){var a=D[i].split('|'),c=a[8]=='u'?'#d9534f':'#2e9e5b';"
-              "bx.innerHTML='<b>'+a[0]+'</b><br>開 '+a[1]+'　高 '+a[2]+'<br>低 '+a[3]+'　收 <b style=\"color:'+c+'\">'+a[4]+'</b><br>週漲跌 <b style=\"color:'+c+'\">'+a[5]+'</b><br>成交 '+a[6]+' 億<br>MA48 '+a[7];"
+              "bx.innerHTML='<b>'+a[0]+'</b><br>開 '+a[1]+'　高 '+a[2]+'<br>低 '+a[3]+'　收 <b style=\"color:'+c+'\">'+a[4]+'</b><br>週漲跌 <b style=\"color:'+c+'\">'+a[5]+'</b><br>成交 '+a[6]+' 億<br>MA48 '+a[7]+'<br>收完週K '+a[9];"
               "bx.style.display='block';var r=sv.getBoundingClientRect(),br=b.getBoundingClientRect(),px=r.left-br.left+x*r.width/" + str(W_) + ";"
               "bx.style.left=(px>br.width/2?px-bx.offsetWidth-10:px+10)+'px';ln.setAttribute('x1',x);ln.setAttribute('x2',x);ln.style.display=''}"
               "sv.querySelectorAll('.wkh').forEach(function(h){var x=+h.getAttribute('x')+(+h.getAttribute('width'))/2;"
