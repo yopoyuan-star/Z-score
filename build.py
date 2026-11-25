@@ -699,6 +699,52 @@ def all_quotes():
     return q
 
 
+HV_JS = """<script>(function(){
+document.querySelectorAll('svg[data-hv]').forEach(function(sv){
+ var o;try{o=JSON.parse(sv.getAttribute('data-hv'))}catch(e){return}
+ var n=o.d.length;if(n<2)return;var par=sv.parentNode;if(getComputedStyle(par).position==='static')par.style.position='relative';
+ var ns='http://www.w3.org/2000/svg',ln=document.createElementNS(ns,'line');ln.setAttribute('y1',0);ln.setAttribute('y2',sv.viewBox.baseVal.height);
+ ln.setAttribute('stroke','#888');ln.setAttribute('stroke-width','.8');ln.setAttribute('stroke-dasharray','3 2');ln.style.display='none';sv.appendChild(ln);
+ var bx=document.createElement('div');bx.className='hvbox';par.appendChild(bx);
+ var note=par.closest('[data-note]');note=note?note.getAttribute('data-note'):'';
+ function at(ev){var r=sv.getBoundingClientRect(),cx=(ev.touches?ev.touches[0].clientX:ev.clientX),x=(cx-r.left)/r.width*o.w;
+  var i=Math.round((x-o.x0)/(o.x1-o.x0)*(n-1));i=Math.max(0,Math.min(n-1,i));var vx=o.x0+(o.x1-o.x0)*i/(n-1);
+  ln.setAttribute('x1',vx);ln.setAttribute('x2',vx);ln.style.display='';
+  bx.innerHTML=o.d[i].split('\\n').map(function(t,k){return k?t:'<b>'+t+'</b>'}).join('<br>');bx.style.display='block';
+  var pr=par.getBoundingClientRect(),px=r.left-pr.left+vx*r.width/o.w;bx.style.top=(r.top-pr.top+4)+'px';
+  bx.style.left=(px>pr.width/2?Math.max(0,px-bx.offsetWidth-8):Math.min(pr.width-bx.offsetWidth,px+8))+'px'}
+ sv.addEventListener('mousemove',at);sv.addEventListener('click',at);sv.addEventListener('touchstart',at,{passive:true});
+ sv.addEventListener('mouseleave',function(){bx.style.display='none';ln.style.display='none'});
+ if(note)sv.setAttribute('aria-label',note);
+});
+document.addEventListener('click',function(e){if(!e.target.closest('svg[data-hv]'))document.querySelectorAll('.hvbox').forEach(function(b){b.style.display='none'})});
+})();</script>"""
+
+
+SYNC_KEYS = ["expo-v1", "rule_q0", "rule_qr", "pyramid-plans-v1", "pyramid-cur"]
+SYNC_JS = """<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script>(function(){
+var KEYS=""" + json.dumps(SYNC_KEYS) + """;
+function enc(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')}
+function dec(t){t=t.replace(/-/g,'+').replace(/_/g,'/');while(t.length%4)t+='=';return JSON.parse(decodeURIComponent(escape(atob(t))))}
+var h=location.hash;
+if(h.indexOf('#sync=')===0){try{var o=dec(h.slice(6));
+ if(confirm('要把另一台裝置的設定(曝險計算、買賣規則總資金、金字塔)套用到這台裝置嗎?\\n這台原本的這些設定會被取代。')){
+  Object.keys(o).forEach(function(k){if(KEYS.indexOf(k)>=0){try{localStorage.setItem(k,o[k])}catch(e){}}});
+  history.replaceState(null,'',location.pathname);location.reload();return}
+ history.replaceState(null,'',location.pathname)}catch(e){alert('同步連結讀取失敗')}}
+var b=document.getElementById('syncbtn');if(!b)return;var box=document.getElementById('syncbox');
+b.addEventListener('click',function(){var o={};KEYS.forEach(function(k){try{var v=localStorage.getItem(k);if(v!=null)o[k]=v}catch(e){}});
+ var url=location.origin+location.pathname+'#sync='+enc(o);document.getElementById('synclink').value=url;
+ var q=document.getElementById('syncqr');q.innerHTML='';
+ if(window.QRCode){try{new QRCode(q,{text:url,width:200,height:200,correctLevel:QRCode.CorrectLevel.L})}catch(e){q.textContent='資料太多,無法做成 QR code,請用複製連結'}}
+ else q.textContent='QR code 載入失敗,請用複製連結';
+ box.style.display='block'});
+document.getElementById('synccopy').addEventListener('click',function(){var i=document.getElementById('synclink');i.select();
+ try{navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}this.textContent='已複製'});
+document.getElementById('syncclose').addEventListener('click',function(){box.style.display='none'});
+})();</script>"""
+
+
 EXPO_HTML = ("<div class=exb><div class=exh><b>📊 曝險計算</b><span id=exdate></span><button type=button id=syncbtn title='把這台裝置的設定(曝險、買賣規則總資金、金字塔)做成連結/QR code,用手機開啟就能套用'>📱 同步</button></div>"
              "<div id=syncbox style='display:none'><div class=sbt>用手機掃描 QR code,或把連結傳到手機開啟,就會套用這台裝置的設定</div><div id=syncqr></div>"
              "<input id=synclink readonly><button type=button id=synccopy>複製連結</button><button type=button id=syncclose>關閉</button>"
