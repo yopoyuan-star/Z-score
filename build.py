@@ -1193,6 +1193,9 @@ def cell(c, r):
     if c in ("週KD", "月KD"):
         v = v if isinstance(v, str) else ""
         return f"<td class='{'gold' if v == '黃金交叉' else 'dead' if v == '死亡交叉' else ''}'>{v}</td>"
+    if c == "Z方向" and isinstance(v, str):                      # 往上紅、往下綠
+        col = "#d9534f" if "↑" in v else "#2e9e5b" if "↓" in v else ""
+        return f"<td style='color:{col};font-weight:700'>{v}</td>" if col else f"<td>{v}</td>"
     if c in TEXT:
         return f"<td{' class=xc' if c in XCOLS else ''}>{v if isinstance(v, str) else ''}</td>"
     if pd.isna(v):
