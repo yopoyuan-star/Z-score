@@ -1365,6 +1365,8 @@ def main():
         inst_only = True
         print(f"期交所資料更新 {olds} → {newer},只重建網頁,不發 LINE")
     m = model.zscore_model(df)
+    _zr = m["Z-SCORE"].rolling(200)                     # Z超低/超高檔:200 日均值 ∓ 2 個標準差(低/高檔是 ∓1.2)
+    m["Z超低檔"] = _zr.mean() - 2 * _zr.std(); m["Z超高檔"] = _zr.mean() + 2 * _zr.std()
     kd = model.kd_log(df, max(CSV_DAYS, CHART_DAYS))
     m = m.join(kd)
     now = m.iloc[-1]
@@ -1372,7 +1374,8 @@ def main():
     mc = model.closed_month_kd(df)                      # 已收完月 K(日曆月)
 
     z, lo, hi = now["Z-SCORE"], now["Z低檔"], now["Z高檔"]
-    zread = "高於 Z高檔(偏熱)" if z > hi else "低於 Z低檔(偏冷)" if z < lo else "在 Z低檔~Z高檔之間"
+    zread = ("高於 Z超高檔(極熱)" if z > now["Z超高檔"] else "高於 Z高檔(偏熱)" if z > hi else
+             "低於 Z超低檔(極冷)" if z < now["Z超低檔"] else "低於 Z低檔(偏冷)" if z < lo else "在 Z低檔~Z高檔之間")
     prev = m["台股收盤價"].iloc[-2]
     chg = now["台股收盤價"] - prev
     chg_pct = chg / prev
@@ -1660,7 +1663,7 @@ def main():
                 "title='收盤要到約這個價位,480 日 Z-SCORE 才會等於 0(右側先決條件)或 0.5(本段重算門檻);每天重算'>"
                 + "<br>".join(f"{'Z≤0' if t == 0 else 'Z=0.5'} ≈ {v:,.0f} <span style='display:inline;font-size:11px;color:#d9534f'>{v / _px - 1:+.1%}</span>" for t, v in zlv)
                 + "</span>")
-    zhtml = (zsec("#1f6feb", "① Z-SCORE(480天)", f"{z:.2f}{zlv_html}", [zread, f"Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}"])
+    zhtml = (zsec("#1f6feb", "① Z-SCORE(480天)", f"{z:.2f}{zlv_html}", [zread, f"Z低檔 {lo:.2f}｜Z高檔 {hi:.2f}", f"Z超低 {now['Z超低檔']:.2f}｜Z超高 {now['Z超高檔']:.2f}<span style='display:inline;font-size:10px;color:var(--mut)'>(±2σ)</span>"])
              + zsec("#8250df", "② MAD ZSCORE", f"{now['MAD ZSCORE']:.2f}", [f"MAD 低檔 {now['MAD 低檔']:.2f}｜高檔 {now['MAD 高檔']:.2f}"])
              + zsec("#d97706", "③ BUY 數(5>10 ~ 80>90 共 9 欄)", f"{len(buy9)} / 9",
                     ['、'.join(c.replace('天Z', '') for c in buy9) or '目前沒有 BUY', f"全部 12 欄:{sum(now[c] == 'BUY' for c in XCOLS)} 個"]))
@@ -1729,7 +1732,7 @@ def main():
 
     cols = ["開盤價", "最高價", "最低價", "台股收盤價", "20日均線", "60日均線", "220日均線", "240日均線",
             "生命線60*3%", "BUY(220日)2%", "SELL(220日)1%", "季線乖離", "年線乖離", "5年線乖離%", "10年線乖離%",
-            "Z-SCORE", "Z低檔", "Z高檔", "Z方向", "MAD ZSCORE"] + ZCOLS + XCOLS + ["週KD", "月KD"]
+            "Z-SCORE", "Z超低檔", "Z低檔", "Z高檔", "Z超高檔", "Z方向", "MAD ZSCORE"] + ZCOLS + XCOLS + ["週KD", "月KD"]
     head = "".join(f"<th class='{'xh xc' if c in XCOLS else ''}'>{c.replace('台股', '')}</th>" for c in ["日期"] + cols)
     body = ""
     for d, r in m.iloc[::-1].head(TABLE_DAYS).iterrows():
@@ -1737,7 +1740,7 @@ def main():
 
     c1 = chart(m.tail(CHART_DAYS), [("台股收盤價", "#1f77b4", 1.5, None), ("20日均線", "#f0ad4e", 1, None), ("60日均線", "#8e44ad", 1, None),
                                    ("220日均線", "#d9534f", 1.4, None), ("240日均線", "#2e9e5b", 1.4, None)], "台股加權指數 與均線")
-    c2 = chart(m.tail(CHART_DAYS), [("Z-SCORE", "#1f77b4", 1.6, None), ("Z高檔", "#d9534f", 1, "dot"), ("Z低檔", "#2e9e5b", 1, "dot")], "480天 Z-SCORE 與動態高低檔")
+    c2 = chart(m.tail(CHART_DAYS), [("Z-SCORE", "#1f77b4", 1.6, None), ("Z超高檔", "#8b0000", 1.3, "dash"), ("Z高檔", "#d9534f", 1, "dot"), ("Z低檔", "#2e9e5b", 1, "dot"), ("Z超低檔", "#0b5d2a", 1.3, "dash")], "480天 Z-SCORE 與動態高低檔(超高/超低 = ±2σ)")
     c3 = chart(m.tail(CHART_DAYS), [("MAD ZSCORE", "#1f77b4", 1.6, None), ("MAD 高檔", "#d9534f", 1, "dot"), ("MAD 低檔", "#2e9e5b", 1, "dot")], "MAD ZSCORE 與動態高低檔")
     c4 = zchart(m)
     c5 = chart(m.tail(CHART_DAYS), [("週K", "#1f77b4", 1.5, None), ("週D", "#f0ad4e", 1.5, None), ("週K高檔", "#d9534f", 1, "dot"), ("週K低檔", "#2e9e5b", 1, "dot")], "動態週 KD(K、D 與 K 合理高低檔)", 360)
@@ -1773,7 +1776,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
 <span style="padding:6px 11px;border-radius:999px;background:#222;color:#fff;font-size:13px;font-weight:600">📈 Z-SCORE 與動態 KD</span>
 <a href="https://yopoyuan-star.github.io/MA200-240/" style="padding:6px 11px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:13px;font-weight:600;text-decoration:none">📊 MA220/240 均線訊號(台股/美股) →</a>
 <a href="https://yopoyuan-star.github.io/Pyramid-Layout-Spreadsheet/" style="padding:6px 11px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:13px;font-weight:600;text-decoration:none">🔺 金字塔加碼試算 →</a>
-<a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:13px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a></nav><div class=motto><b class=mt>紀律</b><div class=mi><span>① 高檔時減碼或空手,否則只是紙上富貴</span><span style='color:#c0392b;font-weight:700'>② 股災時不用慌,不要看損益,按照紀律分批買入</span><span>③ 好好把握!指數長期向上</span><span>④ 漲時賺價差,跌時賺單位數</span><span>⑤ 不要看任何新聞或財經網紅,沒人可以預測漲跌</span><span>⑥ 已經大跌一段後,前一晚夜盤大跌、今天日盤卻只小跌或收紅,可能是止跌訊號!</span><span style='color:#c0392b;font-weight:700'>⑦ 智慧掛好單,閱讀看書去</span><span style='color:#1a5fb4;font-weight:700'>⑧「買進最好的時機就是在市場濺血時,即使血是你自己的。」</span><span style='color:#1f8a5b;font-weight:700'>⑨ 大盤大漲(漲停)不要追,隔天常會下跌</span></div></div>
+<a href="https://www.macromicro.me/collections/46/tw-stock-relative/53117/taiwan-taiex-maintenance-margin" target="_blank" rel="noopener" title="同時開啟:財經M平方 融資維持率 + 玩股網 融資融券" onclick="window.open('https://www.wantgoo.com/stock/margin-trading/exclude-etf/taiex','_blank')" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:13px;font-weight:600;text-decoration:none">📊 大盤融資 ↗</a><a href="https://www.macromicro.me/charts/21519/vxn" target="_blank" rel="noopener" title="財經M平方:那斯達克波動率指數 VXN" style="padding:7px 12px;border-radius:999px;background:#eef1f5;color:#1a5fb4;font-size:13px;font-weight:600;text-decoration:none">😱 VXN ↗</a></nav><div class=motto><b class=mt>紀律</b><div class=mi><span>① 高檔時減碼或空手,否則只是紙上富貴</span><span style='color:#c0392b;font-weight:700'>② 股災時不用慌,不要看損益,按照紀律分批買入</span><span>③ 好好把握!指數長期向上</span><span>④ 漲時賺價差,跌時賺單位數</span><span>⑤ 不要看任何新聞或財經網紅,沒人可以預測漲跌</span><span>⑥ 已經大跌一段後,前一晚夜盤大跌、今天日盤卻只小跌或收紅,可能是止跌訊號!</span><span style='color:#c0392b;font-weight:700'>⑦ 智慧掛好單,閱讀看書去</span><span style='color:#1a5fb4;font-weight:700'>⑧「買進最好的時機就是在市場濺血時,即使血是你自己的。」</span><span style='color:#1f8a5b;font-weight:700'>⑨ 大盤大漲(漲停)不要追,隔天常會下跌</span></div></div>
 <div class=hrow><div class=devcol>{rules_html[:-6]}{ins_html(cyc)}</div></div><div class=mid>{dev_html}{wkc}{crash}</div><div class=mkrow>{mk_html}{alt}</div></div>
 <p class=n>資料日期:<b>{m.index[-1]:%Y-%m-%d}</b>|頁面更新:{stamp:%Y-%m-%d %H:%M}(台北)|資料來源:臺灣證券交易所 加權指數歷史資料|
 <a href="zscore_output.csv">下載最近 {CSV_DAYS} 天完整欄位 CSV</a></p>
