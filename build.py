@@ -1613,12 +1613,34 @@ def main():
                   "title='跌幅=近一年最高收盤後的最低價(盤中)。回測 2009~2026:嚴格版 8 次訊號(含 2025/04/25),62% 之後 60 日內沒再跌超過 3%,20 日後平均 +6.1%、勝率 88%;寬鬆版 9 次,67%。訊號通常比最低點晚 2 天~2 週'>"
                   f"<b>🚦 止跌訊號</b> 週K連升 <b>{min(_wr, 3)}/3</b> 日・跌幅≤−20% {_ok(_wdd <= -0.20)}・乖離≤−10% {_ok(_dvS.iloc[-1] <= -0.10)}"
                   f"<br>嚴格(今日乖離) {_ok(_s1)}　寬鬆(近5日乖離) {_ok(_s2)}</div>")
+    # Z 超低站回燈(1999~2026 回測):Z 跌破超低檔(−2σ)後連 3 天站回 + 期間年線乖離曾 ≤ −15% + 收盤 > MA20
+    _zz, _zx = m["Z-SCORE"], m["Z超低檔"]
+    _zb = [i for i in range(max(0, len(m) - 120), len(m)) if pd.notna(_zx.iloc[i]) and _zz.iloc[i] < _zx.iloc[i]]
+    _zab = 0
+    for _i in range(len(m) - 1, -1, -1):
+        if pd.notna(_zx.iloc[_i]) and _zz.iloc[_i] >= _zx.iloc[_i]: _zab += 1
+        else: break
+    _zbi = _zb[-1] if _zb else None
+    _zc1 = _zbi is not None and _zab >= 3
+    _zdv = float(_dvS.iloc[max(0, (_zbi if _zbi is not None else len(m) - 1) - 60):].min())
+    _zc2 = _zbi is not None and _zdv <= -0.15
+    _zc3 = bool(_cs.iloc[-1] > m["20日均線"].iloc[-1])
+    _zall = _zc1 and _zc2 and _zc3
+    _zst = (f"站回 <b>{min(_zab, 3)}/3</b> 日(最近跌破 {m.index[_zbi]:%m/%d})" if _zbi is not None and _zz.iloc[-1] >= _zx.iloc[-1]
+            else f"<b style='color:#2e9e5b'>跌破中</b>(Z {_zz.iloc[-1]:.2f} &lt; {_zx.iloc[-1]:.2f})" if _zbi is not None and _zz.iloc[-1] < _zx.iloc[-1]
+            else "近 120 日未跌破")
+    _zx_html = ("<div class=stp style='margin-top:4px;border-color:" + ("#d9534f" if _zall else "#e6c84f") + ";background:" + ("#fde2e1" if _zall else "var(--yl)") + "' "
+                "title='回測 1999~2026:Z 跌破超低檔(200 日均值 −2σ)後連 3 天站回,單獨使用 45 次、只有 20% 守住前低,1 年後平均 +2.7%(比隨便一天買的 +8.9% 還差)。"
+                "加上「期間年線乖離曾 ≤ −15%」與「收盤 > MA20」後 10 次,40% 守住前低,1 年後平均 +27.7%、勝率 80%(成功:2002/10、2015/9、2020/4、2025/5;失敗:2008/7~8 之後又跌 45%)。"
+                "訊號後平均仍會再跌約 17%,只當分批加碼的確認,不要一次買滿'>"
+                f"<b>🧊 Z 超低站回</b> {_zst} {_ok(_zc1)}・年線乖離曾≤−15% {_ok(_zc2)}<small style='color:var(--mut)'>(最低 {_zdv:+.1%})</small>・收盤&gt;MA20 {_ok(_zc3)}"
+                f"<br>三項 {int(_zc1) + int(_zc2) + int(_zc3)}/3 → " + ("<b style='color:#d9534f'>成立:落底機率較高,可照計畫分批加碼</b>" if _zall else "未成立") + "</div>")
     calc = calc_html(df, mc["K"], {"up": UP_BAND, "dn": DN_BAND, "left": [x for x, _ in LEFT_MA],
                                    "a_dd": -CRASH_AVG["台股"][0], "a_dv": -0.204, "a_wk": 12.4, "a_mk": 32.6, "a_ck": 37.8,
                                    "s_dd": CRASH_AVG["台股"][1], "s_dv": 0.039, "s_wk": 4.5, "s_mk": 16.0, "s_ck": 16.7})
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。MA220下彎:目前=20 日斜率,達平均=斜率<0,達寬鬆=今天均線比昨天低。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
                "寬鬆門檻=平均往較淺方向退 1 個標準差(跌幅/乖離=平均+1σ,K 值=平均+1σ)。僅供參考,長空頭會遠超過平均'>"
-               f"<div class=mkh><div><b>🎯 台股落底指標</b><br><span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span></div>" + _stop_html + "</div>"
+               f"<div class=mkh><div><b>🎯 台股落底指標</b><br><span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span></div>" + "<div>" + _stop_html + _zx_html + "</div></div>"
                "<div class=mkg><div><table><tr><th>指標</th><th>目前</th><th>平均</th><th>寬鬆</th><th>達平均</th><th>達寬鬆</th></tr>"
                + "".join(_rows) + "</table></div><div>"
                "<table style='margin-top:2px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
