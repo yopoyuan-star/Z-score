@@ -172,6 +172,8 @@ INS_SELL_DAYS = 1      # 保險 B 賣出:收盤 < MA220×0.99 當天(+年線下�
 #   回測 2006~2026:近 20 年回撤 −31.8% → −22.5%,年化 16.8% → 16.9%(只在 2008/9 觸發一次)
 LEFT_STOP = 0.15
 INV_IN2 = 0.25         # 6/6 轉出時 反1 先買 25%、中華電 50%、現金 25%;收盤第一次跌破 MA220 → 用現金再買反1 25%(2026-11 回測,動態KD 6/6:20 年 18.0%、回撤 −17.0%)
+INV_S1 = 0.20         # 簡化版:收盤距一年最高收盤跌 20% → 反1 賣 1/3(2026-11 回測 10 輪平均 +9.3%、8 勝)
+INV_S2 = 0.25         # 跌 25%,或在 −20%~−25% 間收盤站上 MA10 → 反1 賣剩下
 INV_OUT = 0.15         # 轉出後收盤乖離第一次跌到 MA220−15% → 反1(00632R)全賣,改中華電、現金各半(2026-11 回測)
 # 左側:Z<-2.5 時直接補到 50%;右側先決:Z≤0 或距一年高點跌 20% 或轉出滿 252 個交易日 → 已收完月K KD 金叉全部買回
 # 保險 A(移動停損 −20%)2026-11 回測無幫助 → 停用(USE_INS_A=False),只留保險 B
@@ -572,18 +574,31 @@ def cycle_lines(cy, z):
         return []
     if cy["maout"]:
         i_ = cy["ins"]; nm = "保險 B(MA220)"
-        return [(f"今日{nm}成立,請轉出:獲利金額 反1(00632R)1/4、中華電 1/4、現金 1/2" if cy["n"] == 0 else
+        return [(f"今日{nm}成立,請轉出:獲利金額 反1(00632R)1/8、中華電 1/4、現金 5/8" if cy["n"] == 0 else
                  f"{nm}轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)"),
                 f"連 {INS_DAYS} 天收盤站回 MA220({i_['ma']:,.0f})→ 全部買回;目前 {min(i_['up'], INS_DAYS)}/{INS_DAYS}"]
-    head = ("今日 6/6 成立,請轉出獲利金額:反1(00632R)1/4、中華電 1/4、現金 1/2(反1 先買 1/3,跌破年線再買 2/3)" if cy["n"] == 0 and cy["why"] == "6/6" else
+    head = ("今日 6/6 成立,請轉出獲利金額:反1(00632R)1/8、中華電 1/4、現金 5/8(跌破年線:反1 再買 1/8、中華電全轉反1)" if cy["n"] == 0 and cy["why"] == "6/6" else
             f"已轉出 {cy['n']} 個交易日({cy['exit']:%Y-%m-%d} 起)")
     if cy.get("inv2_today"):
-        inv = f"⚠ 今日收盤跌破年線 MA220({cy['ma_px']:,.0f}):請把反1(00632R)再買 2/3"
+        inv = f"⚠ 今日收盤跌破年線 MA220({cy['ma_px']:,.0f}):請用現金再買反1(00632R)1/8,並把中華電全部轉成反1"
     elif cy.get("inv2"):
-        inv = f"反1:{cy['inv2']:%m/%d} 已跌破年線,反1 應已買滿(獲利金額的 1/4)"
+        inv = f"反1:{cy['inv2']:%m/%d} 已跌破年線,反1 應已加到 1/2(含中華電轉入)、現金 1/2"
     else:
-        inv = f"反1 目前 1/3;收盤跌破年線 MA220(約 {cy['ma_px']:,.0f})→ 再買 2/3"
-    return [head, inv] + (simple_lines(cy["sr"]) if cy.get("sr") else [])
+        inv = f"反1 1/8、中華電 1/4;收盤跌破年線 MA220(約 {cy['ma_px']:,.0f})→ 反1 再買 1/8、中華電全轉反1"
+    L = [head, inv]
+    iv = cy["sr"]["inv"] if cy.get("sr") else None
+    if iv:
+        if iv["s2_new"]:
+            L.insert(1, f"⚠ 今日{iv['why']}:請賣出剩下的反1(00632R)")
+        if iv["s1_new"]:
+            L.insert(1, f"⚠ 今日收盤跌破 −20%({iv['px1']:,.0f}):請賣出 1/3 反1(00632R),不管賺賠")
+        if iv["s2"] is not None:
+            L.append(f"反1:{iv['s1']:%m/%d} 賣 1/3、{iv['s2']:%m/%d} {iv['why']} 已全賣")
+        elif iv["s1"] is not None:
+            L.append(f"反1:{iv['s1']:%m/%d} 已賣 1/3;收盤跌破 {iv['px2']:,.0f}(−25%),或 −20%~−25% 間站上 MA10({iv['ma10']:,.0f})→ 賣剩下")
+        else:
+            L.append(f"反1 賣出:收盤跌破 {iv['px1']:,.0f}(−20%)→ 賣 1/3;跌破 {iv['px2']:,.0f}(−25%)或 −20%~−25% 間站上 MA10 → 賣剩下")
+    return L + (simple_lines(cy["sr"]) if cy.get("sr") else [])
 
 
 def cycle_short(cy):
@@ -591,15 +606,20 @@ def cycle_short(cy):
     if cy["state"] == "持有":
         return ""
     if cy["n"] == 0 and cy["why"] == "6/6":
-        return "今日 6/6 成立,請轉出:反1¼、中華電¼、現金½"
+        return "今日 6/6 成立,請轉出:反1⅛、中華電¼、現金⅝"
     if cy["maout"]:
         return (f"今日保險 {cy['why']} 成立,請轉出" if cy["n"] == 0 else
                 f"保險{cy['why']}轉出{cy['n']}日｜站回MA220 {min(cy['ins']['up'], INS_DAYS)}/{INS_DAYS}")
     if cy.get("inv2_today"):
-        return "今日跌破年線,請把反1再買2/3"
+        return "今日破年線:反1再買⅛、中華電轉反1"
     sr = cy.get("sr")
     if not sr:
         return f"已轉出{cy['n']}日"
+    iv = sr.get("inv") or {}
+    if iv.get("s2_new"):
+        return f"今日{iv['why']},請賣剩下的反1"
+    if iv.get("s1_new"):
+        return "今日跌破−20%,請賣1/3反1"
     new = [st for st in sr["steps"] if st["new"]]
     if new:
         return f"今日跌破−{new[-1]['x']:.0%},請轉{sum(st['w'] for st in new):.0%}回股票"
@@ -1074,7 +1094,20 @@ def simple_state(m, df, cy, mc):
     if avg:
         aft = c.loc[fills[-1][0]:]; br = aft[aft <= avg * (1 - SIMPLE_STOP)]
         stop_d = br.index[0] if len(br) else None
-    return dict(out=out, hi=hi, hi_i=hi_i, lo=lo, dd=dd, steps=steps, conds=conds,
+    # 反1 賣出(2026-11 回測):收盤距一年最高收盤跌 20% → 賣 1/3;之後跌到 25%,或在 −20%~−25% 間收盤站上 MA10 → 賣剩下
+    _hiS = c.rolling(250, min_periods=1).max(); _ddS = c / _hiS - 1; _m10 = c.rolling(10).mean()
+    inv_s1 = inv_s2 = None; inv_why = ""
+    if out and cy.get("exit") is not None:
+        for d in c.loc[cy["exit"]:].index:
+            if inv_s1 is None and _ddS[d] <= -INV_S1:
+                inv_s1 = d
+            if inv_s1 is not None and inv_s2 is None:
+                if _ddS[d] <= -INV_S2: inv_s2, inv_why = d, f"跌破 −{INV_S2:.0%}"
+                elif _ddS[d] <= -INV_S1 and c[d] > _m10[d]: inv_s2, inv_why = d, "區間站上 MA10"
+            if inv_s2 is not None: break
+    inv = dict(s1=inv_s1, s2=inv_s2, why=inv_why, px1=hi * (1 - INV_S1), px2=hi * (1 - INV_S2), ma10=float(_m10.iloc[-1]),
+               dd=float(_ddS.iloc[-1]), s1_new=inv_s1 is not None and inv_s1 == c.index[-1], s2_new=inv_s2 is not None and inv_s2 == c.index[-1])
+    return dict(inv=inv, out=out, hi=hi, hi_i=hi_i, lo=lo, dd=dd, steps=steps, conds=conds,
                 close=float(c.iloc[-1]), avg=avg, stop_d=stop_d, fills=len(fills),
                 conv=sum(st["w"] for st in steps if st["ok"]), nxt=next((st for st in steps if not st["ok"]), None))
 
@@ -1083,24 +1116,28 @@ def rules_simple(sr, cy):
     """簡化版買賣規則框;輸入總金額自動算每一階金額(存在這台瀏覽器)"""
     ck = lambda o: '<b style="color:#1a7f37">☑</b>' if o else '<b style="color:#aaa;font-weight:400">☐</b>'
     out = sr["out"]
+    iv = sr["inv"]
     sd = f"{sr['stop_d']:%m/%d}" if sr.get("stop_d") is not None else ""
     r2 = "".join(f"<tr><td>−{st['x']:.0%}</td><td>{st['px']:,.0f}</td><td>{st['w']:.0%}</td><td class=amt data-k=q2 data-w='{st['w']}'>—</td><td class=fl data-k=q2 data-w='{st['w']}' data-px='{st['px']:.2f}' data-ok='{int(bool(out and st['ok']))}'>{ck(st['ok'])}</td></tr>"
                  for st in sr["steps"])
     r3 = "".join(f"<tr><td>{c_['nm']}</td><td class=det>{c_['det']}</td><td>1/{len(sr['conds'])}</td><td class=amt data-k=q3 data-w='{1 / len(sr["conds"])}'>—</td><td class=fl data-k=q3 data-w='{1 / len(sr["conds"])}' data-px='{(c_['px'] or 0):.2f}' data-ok='{int(bool(out and c_['px']))}'>{ck(c_['ok'])}</td></tr>" for c_ in sr["conds"])
-    bt = ("<div class=rbt title='回測 1999/06~2026/10(不含股息):① 6/6 轉出 → ② 跌幅轉換(6 成)→ ③ 買回(4 成)→ ④ 停損(大盤 15%、00631L 20%)→ 保險 B;"
+    bt = ("<div class=rbt title='回測 1999/06~2026/10(不含股息):① 6/6 轉出(反1 1/8+破年線 1/8、中華電破年線轉反1、反1 跌 20%/25% 賣出)→ ② 跌幅轉換(6 成)→ ③ 買回(4 成)→ ④ 停損(大盤 15%、00631L 20%)→ 保險 B;"
           "中華電以 0.25×大盤+年息 6%、反1 以 −1×大盤、現金年息 1% 模擬。歷史回測不代表未來'>"
           "<table class=rt><tr><th>回測<small style='color:var(--mut)'> 年化/MDD</small></th><th>1999起</th><th>近20年</th><th>近15年</th><th>近10年</th></tr>"
           + "".join(f"<tr><td>{nm}</td>" + "".join(f"<td>{r_:.1f}%<br><small>{d_}%</small></td>" for r_, d_ in v) + "</tr>"
-                    for nm, v in (("大盤", ((12.1, -48), (15.5, -17), (16.2, -11), (21.3, -11))),
-                                  ("00631L", ((21.2, -74), (28.2, -39), (29.0, -21), (40.5, -21))),
+                    for nm, v in (("大盤", ((13.0, -49), (16.6, -17), (17.5, -11), (22.9, -11))),
+                                  ("00631L", ((22.1, -74), (29.5, -37), (30.5, -21), (42.5, -21))),
                                   ("<span>買進持有</span>", ((7.0, -66), (10.0, -58), (12.9, -32), (17.6, -32)))))
           + "</table></div>")
     return (f"<div class=rules><div><b class=t>📋 買賣規則(簡化版)</b> <span>容易執行優先</span> <span class=rbw tabindex=0>📈 回測績效{bt}</span></div>"
-            f"<div class=rr>{ck(out)} <b>① 轉出</b>:6/6 全成立 → 獲利金額 <b>反1(00632R)1/4、中華電 1/4、現金 1/2</b>"
+            f"<div class=rr>{ck(out)} <b>① 轉出</b>:6/6 全成立 → 獲利金額 <b>反1(00632R)1/8、中華電 1/4、現金 5/8</b>"
             + (f" <small>({cy['exit']:%m/%d} 轉出)</small>" if out and cy.get("exit") is not None else "")
-            + f"<br><small style='margin-left:18px'>反1 分兩次:6/6 先買 <b>1/3</b>;"
-            + f"{ck(out and bool(cy.get('inv2')))} 收盤跌破年線 MA220({cy.get('ma_px', 0):,.0f})再買 <b>2/3</b>"
-            + (f"({cy['inv2']:%m/%d} 已破)" if out and cy.get("inv2") else "") + "</small></div>"
+            + f"<br><small style='margin-left:18px'>"
+            + f"{ck(out and bool(cy.get('inv2')))} 收盤跌破年線 MA220({cy.get('ma_px', 0):,.0f})→ 反1 再買 <b>1/8</b>,中華電 1/4 <b>全部轉成反1</b>(反1 合計 1/2、現金 1/2)"
+            + (f"({cy['inv2']:%m/%d} 已破)" if out and cy.get("inv2") else "")
+            + f"<br>反1 賣出轉現金(不管賺賠):{ck(bool(iv['s1']))} 收盤跌 <b>20%</b>({iv['px1']:,.0f})賣 <b>1/3</b>" + (f"({iv['s1']:%m/%d})" if iv['s1'] is not None else "")
+            + f";{ck(bool(iv['s2']))} 跌 <b>25%</b>({iv['px2']:,.0f})或 −20%~−25% 間站上 MA10({iv['ma10']:,.0f})賣<b>剩下</b>"
+            + (f"({iv['s2']:%m/%d} {iv['why']})" if iv['s2'] is not None else "") + "</small></div>"
             f"<div class='rr rq'><label class=rin style='margin-left:0'>總資金 <input id=q0 inputmode=numeric placeholder='輸入總資金'></label>"
             f"<label class=rin>② 用 <input id=qr inputmode=decimal value='6' style='width:34px;text-align:right'> 成</label>"
             f"<div class=rqs>② 跌幅轉換 <b id=q2v>—</b>・③ 買回 <b id=q3v>—</b> <small>(③ = 總資金 − ②)</small></div></div>"
@@ -1679,7 +1716,7 @@ def main():
     wnote = ((f"本段自 {wstart:%Y-%m-%d} 全部買回重算" if wstart_ma == "buy" else
               f"本段自 {wstart:%Y-%m-%d} 站回 MA{model.SEG_MA}" if wstart_ma == "ma" else f"本段自 {wstart:%Y-%m-%d} Z 上穿 {model.SEG_RESET_Z:g}")
              if wstart is not None else "Z 目前在 0 以下") + (f"|首次 6/6:{wfirst:%Y-%m-%d}" if wfirst is not None and all(wok) else "")
-    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：獲利金額 反1(00632R)1/4、中華電 1/4、現金 1/2!!(反1 先買 1/3、破年線再買 2/3;之後跌 15/20/25/30% 分批轉回股票){cyl_html}</div>"))
+    cards.append(("過熱轉弱警示", f"{sum(wok)} / 6{'　⚠' if all(wok) else ''}<small>{wlines}</small><small>{wnote}</small><div class='ptip{' hot' if all(wok) else ''}'>⚠ 6/6 成立須轉出：獲利金額 反1(00632R)1/8、中華電 1/4、現金 5/8!!(破年線:反1 再買 1/8、中華電全轉反1;反1 跌 20% 賣 1/3,跌 25% 或 −20~−25% 站上 MA10 賣剩下;之後跌 15/20/25/30% 分批轉回股票){cyl_html}</div>"))
     cards.append(("近一年最高價", f"{hi_px:,.2f}<small>{hi_dt:%Y-%m-%d}|目前收盤距高點 <b style='color:{'#d9534f' if dd < 0 else 'inherit'}'>{dd:+.1%}</b></small>" + (f"<small>高點後最低 {lo_px:,.2f}({lo_dt:%Y-%m-%d})|最大跌幅 <b style='color:#d9534f'>{lo_dd:+.1%}</b></small>" if lo_dd < 0 else "")))
     cards.append(("距高點下跌 10~25% 對應指數", "".join(row(p) for p in (10, 15, 20, 25))))
     cards.append(("距高點下跌 30~40% 對應指數", "".join(row(p) for p in (30, 35, 40))))
@@ -1873,7 +1910,7 @@ tr.sell td:nth-child(2){{color:#2e9e5b;font-weight:700}}summary{{cursor:pointer;
                f"{fxd['text'] if fxd else '美元兌台幣 暫無資料'}\n"
                f"{insd['text'] if insd else '三大法人/外資期貨 暫無資料'}\n"
                f"過熱轉弱警示 {sum(wok)}/6:曾Z>1.5 {mk(wok[0])}|9欄曾全BUY {mk(wok[1])}|BUY≤3 {mk(wok[2])}|週月KD雙死叉 {mk(wok[3])}|5年乖離曾>15% {mk(wok[4])}|90>120~150>180曾全BUY {mk(wok[5])}\n"
-               f"⚠ 6/6 成立須轉出：獲利金額 反1(00632R)1/4、中華電 1/4、現金 1/2!!(反1 先買 1/3、破年線再買 2/3;之後跌 15/20/25/30% 分批轉回股票){'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
+               f"⚠ 6/6 成立須轉出：獲利金額 反1(00632R)1/8、中華電 1/4、現金 5/8!!(破年線:反1 再買 1/8、中華電全轉反1;反1 跌 20% 賣 1/3,跌 25% 或 −20~−25% 站上 MA10 賣剩下;之後跌 15/20/25/30% 分批轉回股票){'' if cyl else '(目前已達 6/6,請開始執行)' if all(wok) else ''}\n"
                + "".join(f"    {t}\n" for t in cyl + insl) +
                f"{kdl}\n\n詳細頁面:{PAGE_URL}")
     import flexmsg
