@@ -1739,6 +1739,25 @@ def main():
                 + f"<b>🧊 Z 超低站回</b> {_zst} {_ok(_zc1)}・年線乖離曾≤−15% {_ok(_zc2)}<small style='color:var(--mut)'>(最低 {_zdv:+.1%})</small>・收盤&gt;MA20 {_ok(_zc3)}"
                 f"<br>三項 {int(_zc1) + int(_zc2) + int(_zc3)}/3 → " + ("<b style='color:#d9534f'>成立:落底機率較高,可照計畫分批加碼</b>" if _zall else "未成立") + "</div>")
     LAMPS.clear(); _vol_html = vol_html()
+    # MAD 低檔燈(1999~2026 回測):黃=MAD<−0.5 且跌幅≥20%(10 次,6M 90% 上漲);紅=MAD 近 20 日曾<0、回升≥0.5、站上 MA20、跌幅≥15%(10 次,6M 90%、之後平均再跌 7%)
+    _md = m["MAD ZSCORE"]; _mc = m["台股收盤價"]; _mdd = _mc / _mc.rolling(250, min_periods=1).max() - 1
+    _mmin = _md.rolling(20, min_periods=1).min()
+    _m2 = (_mmin < 0) & (_md >= _mmin + 0.5) & (_mc > m["20日均線"]) & (_mdd <= -0.15)
+    _m1 = (_md < -0.5) & (_mdd <= -0.20)
+    _m2d = _m2[_m2].index[-1] if _m2.iloc[-60:].any() else None
+    _mnow, _ddnow = float(_md.iloc[-1]), float(_mdd.iloc[-1])
+    if bool(_m2.iloc[-1]) or (_m2d is not None and (m.index[-1] - _m2d).days <= 30):
+        _mst, _mtxt = "on", f"<b style='color:#d9534f'>回升確認成立</b>({_m2d:%m/%d}):MAD 從 {float(_mmin.loc[_m2d]):.2f} 回升到 {float(_md.loc[_m2d]):.2f}、站上 MA20 → ② 剩下批次可考慮提前買完"
+    elif bool(_m1.iloc[-1]):
+        _mst, _mtxt = "wait", f"<b>便宜區</b>:MAD {_mnow:.2f} &lt; −0.5、跌幅 {_ddnow:.1%} → 照 ② 繼續分批買,不要停;等 MAD 回升 0.5 且站上 MA20 轉紅燈"
+    else:
+        _mst, _mtxt = "off", f"MAD {_mnow:.2f}(便宜區要 &lt; −0.5 且跌幅 ≥20%,目前跌幅 {_ddnow:.1%})"
+    _mad_html = (f"<div class=stp style='margin-top:4px;border-color:" + {"on": "#d9534f", "wait": "#e6c84f"}.get(_mst, "#ccd") + ";background:" + {"on": "#fde2e1", "wait": "var(--yl)"}.get(_mst, "var(--bg)") + "' "
+                 "title='MAD ZSCORE 以中位數計算,較不受極端值影響,低檔判斷比 Z-SCORE 準(MAD<−0.5 之後 12 個月 91% 上漲,Z<−0.5 只有 75%)。"
+                 "黃燈:MAD<−0.5 且跌幅≥20%(10 次,6 個月後 90% 上漲、平均 +10.7%,之後平均仍再跌 12%,不要一次買滿)。"
+                 "紅燈:近 20 日 MAD 曾<0、回升≥0.5、收盤站上 MA20、跌幅≥15%(10 次,6 個月後 90% 上漲、平均 +14.7%,之後平均再跌 7%;失敗例 2008/2)'>"
+                 + lamp(_mst) + f"<b>📉 MAD 低檔</b> {_mtxt}</div>")
+    LAMPS.append(_mst)
     _lon = int(_s1 or _s2) + int(_zall) + LAMPS.count("on")
     calc = calc_html(df, mc["K"], {"up": UP_BAND, "dn": DN_BAND, "left": [x for x, _ in LEFT_MA],
                                    "a_dd": -CRASH_AVG["台股"][0], "a_dv": -0.204, "a_wk": 12.4, "a_mk": 32.6, "a_ck": 37.8,
@@ -1746,7 +1765,7 @@ def main():
     mk_html = ("<div class=mkb title='平均=台股 2011、2015、2018、2020、2022、2025 六次一般股災的底部平均(不含 2000/2008 長空頭)。MA220下彎:目前=20 日斜率,達平均=斜率<0,達寬鬆=今天均線比昨天低。跌幅、乖離都以一年高點後的最低價計(會保留波段最深值);動態週K平均 12.4。"
                "寬鬆門檻=平均往較淺方向退 1 個標準差(跌幅/乖離=平均+1σ,K 值=平均+1σ)。僅供參考,長空頭會遠超過平均'>"
                f"<div class=mkh><div><b>🎯 台股落底指標</b><br><span>達成平均 {_n1}/{len(BOTTOM)}・達成寬鬆 {_n2}/{len(BOTTOM)}・金叉 {_ng}/2</span>"
-               f"<br><span class='lmpc{' hot' if _lon else ''}'>止跌燈號亮 <b>{_lon}</b>/{2 + len(LAMPS)}</span></div>" + "<div>" + _stop_html + _zx_html + _vol_html + "</div></div>"
+               f"<br><span class='lmpc{' hot' if _lon else ''}'>止跌燈號亮 <b>{_lon}</b>/{2 + len(LAMPS)}</span></div>" + "<div>" + _stop_html + _zx_html + _mad_html + _vol_html + "</div></div>"
                "<div class=mkg><div><table><tr><th>指標</th><th>目前</th><th>平均</th><th>寬鬆</th><th>達平均</th><th>達寬鬆</th></tr>"
                + "".join(_rows) + "</table></div><div>"
                "<table style='margin-top:2px'><tr><th>動態KD</th><th>K / D</th><th>狀態</th><th>連續</th><th>K vs 前日</th><th>金叉</th></tr>"
