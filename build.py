@@ -917,6 +917,7 @@ def week_chart(df, vol, W_=460, H_=340):
         c = df.Close; hi_i = c.iloc[-250:].idxmax()
         wk = df.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"}).dropna()
         wk["MA48"] = wk.Close.rolling(48).mean()
+        wk["MA12"] = wk.Close.rolling(12).mean()          # 季線(12 週)
         if len(vol): wk["Vol"] = vol.resample("W-FRI").sum().reindex(wk.index)
         else: wk["Vol"] = np.nan
         # 收完週KD:只用已收完的週(今天不是週五就排除本週),9 週 RSV,K=2/3K+1/3RSV,D=2/3D+1/3K
@@ -927,7 +928,7 @@ def week_chart(df, vol, W_=460, H_=340):
         wk["cK"] = pd.Series(Kc, index=wc.index).reindex(wk.index); wk["cD"] = pd.Series(Dc, index=wc.index).reindex(wk.index)
         w = wk.loc[hi_i - pd.DateOffset(months=6):]
         n = len(w); L_, R_ = 6, 50; PT = 8; VH = 54; KH = 58; PH = H_ - VH - KH - 46; VT = PT + PH + 10; KT = VT + VH + 14
-        lo_, hi_ = float(min(w.Low.min(), w.MA48.min())), float(max(w.High.max(), w.MA48.max())); pad = (hi_ - lo_) * .04; lo_ -= pad; hi_ += pad
+        lo_, hi_ = float(min(w.Low.min(), w.MA48.min(), w.MA12.min())), float(max(w.High.max(), w.MA48.max(), w.MA12.max())); pad = (hi_ - lo_) * .04; lo_ -= pad; hi_ += pad
         bw = (W_ - L_ - R_) / n; x_ = lambda i: L_ + bw * (i + .5)
         y_ = lambda v: PT + PH * (hi_ - v) / (hi_ - lo_)
         vmax = float(w.Vol.max()) if w.Vol.notna().any() else 0
@@ -946,6 +947,8 @@ def week_chart(df, vol, W_=460, H_=340):
                 out += f"<rect x='{x_(i) - bw * .36:.1f}' y='{VT + VH - vh:.1f}' width='{bw * .72:.1f}' height='{vh:.1f}' fill='{col}' opacity='.55'/>"
         out += ("<polyline points='" + " ".join(f"{x_(i):.1f},{y_(v):.1f}" for i, v in enumerate(w.MA48) if v == v)
                 + "' fill='none' stroke='#8e44ad' stroke-width='1.6'/>")
+        out += ("<polyline points='" + " ".join(f"{x_(i):.1f},{y_(v):.1f}" for i, v in enumerate(w.MA12) if v == v)
+                + "' fill='none' stroke='#f39c12' stroke-width='1.6'/>")
         ws = df.index.to_series().resample("W-FRI").first().reindex(w.index)
         info = []                                                       # 滑鼠移到每一根顯示的資訊
         for i, (d, r) in enumerate(w.iterrows()):
@@ -954,7 +957,8 @@ def week_chart(df, vol, W_=460, H_=340):
             info.append(f"{ws[d]:%Y/%m/%d}~{wk_last(df, d):%m/%d}|{r.Open:,.0f}|{r.High:,.0f}|{r.Low:,.0f}|{r.Close:,.0f}|"
                         + (f"{ch:+.2%}" if ch is not None else "—") + "|" + (f"{r.Vol:,.0f}" if r.Vol == r.Vol else "—")
                         + "|" + (f"{r.MA48:,.0f}" if r.MA48 == r.MA48 else "—") + "|" + ("u" if (ch or 0) >= 0 else "d")
-                        + "|" + (f"{r.cK:.1f} / D {r.cD:.1f}" if r.cK == r.cK else "本週未收完"))
+                        + "|" + (f"{r.cK:.1f} / D {r.cD:.1f}" if r.cK == r.cK else "本週未收完")
+                        + "|" + (f"{r.MA12:,.0f}" if r.MA12 == r.MA12 else "—"))
         ky = lambda v: KT + KH * (100 - v) / 100
         out += (f"<rect x='{L_}' y='{ky(20):.1f}' width='{W_ - L_ - R_}' height='{ky(0) - ky(20):.1f}' fill='#2e9e5b' opacity='.08'/>"
                 f"<rect x='{L_}' y='{ky(100):.1f}' width='{W_ - L_ - R_}' height='{ky(80) - ky(100):.1f}' fill='#d9534f' opacity='.08'/>"
@@ -980,7 +984,7 @@ def week_chart(df, vol, W_=460, H_=340):
         out += (f"<text x='{L_}' y='{H_ - 2}' font-size='9.5' fill='var(--mut)'>{w.index[0]:%y/%m}</text>"
                 f"<text x='{x_(n // 2):.1f}' y='{H_ - 2}' font-size='9.5' fill='var(--mut)' text-anchor='middle'>{w.index[n // 2]:%y/%m}</text>"
                 f"<text x='{W_ - R_}' y='{H_ - 2}' font-size='9.5' fill='var(--mut)' text-anchor='end'>{w.index[-1]:%m/%d}</text>")
-        last = w.iloc[-1]; ma48 = float(last.MA48)
+        last = w.iloc[-1]; ma48 = float(last.MA48); ma12 = float(last.MA12)
         t = df.iloc[-1]; pc = float(df.Close.iloc[-2]); chg = float(t.Close) / pc - 1; cc = "#d9534f" if chg >= 0 else "#2e9e5b"
         wd = "一二三四五六日"[df.index[-1].weekday()]
         wchg = float(last.Close) / float(wk.Close.iloc[-2]) - 1 if len(wk) > 1 else 0
@@ -1001,14 +1005,14 @@ def week_chart(df, vol, W_=460, H_=340):
         js = ("<script>(function(){var b=document.currentScript.parentNode,sv=b.querySelector('svg'),bx=b.querySelector('.wkinfo'),ln=sv.querySelector('.wkx');"
               "var D=" + json.dumps(info, ensure_ascii=False) + ";"
               "function show(i,x){var a=D[i].split('|'),c=a[8]=='u'?'#d9534f':'#2e9e5b';"
-              "bx.innerHTML='<b>'+a[0]+'</b><br>開 '+a[1]+'　高 '+a[2]+'<br>低 '+a[3]+'　收 <b style=\"color:'+c+'\">'+a[4]+'</b><br>週漲跌 <b style=\"color:'+c+'\">'+a[5]+'</b><br>成交 '+a[6]+' 億<br>MA48 '+a[7]+'<br>收完週K '+a[9];"
+              "bx.innerHTML='<b>'+a[0]+'</b><br>開 '+a[1]+'　高 '+a[2]+'<br>低 '+a[3]+'　收 <b style=\"color:'+c+'\">'+a[4]+'</b><br>週漲跌 <b style=\"color:'+c+'\">'+a[5]+'</b><br>成交 '+a[6]+' 億<br><i style=\"font-style:normal;color:#e67e22\">MA12 '+a[10]+'</i>　<i style=\"font-style:normal;color:#8e44ad\">MA48 '+a[7]+'</i><br>收完週K '+a[9];"
               "bx.style.display='block';var r=sv.getBoundingClientRect(),br=b.getBoundingClientRect(),px=r.left-br.left+x*r.width/" + str(W_) + ";"
               "bx.style.left=(px>br.width/2?px-bx.offsetWidth-10:px+10)+'px';ln.setAttribute('x1',x);ln.setAttribute('x2',x);ln.style.display=''}"
               "sv.querySelectorAll('.wkh').forEach(function(h){var x=+h.getAttribute('x')+(+h.getAttribute('width'))/2;"
               "h.addEventListener('mouseenter',function(){show(+h.dataset.i,x)});h.addEventListener('click',function(e){e.stopPropagation();show(+h.dataset.i,x)})});"
               "sv.addEventListener('mouseleave',function(){bx.style.display='none';ln.style.display='none'});})();</script>")
         return (f"<div class='ddc wkb'>"
-                f"<b title='台股週K(紅漲綠跌),紫線=MA48 週線;下方=每週成交金額(證交所,億元),紅色三角形=期間最大量那一週;滑鼠移到 K 棒(手機點一下)可看每一週的開高低收'>📊 台股週線</b>{today}<span>週收 {last.Close:,.0f}・<b style='color:#8e44ad'>MA48 週 {ma48:,.0f}</b>({last.Close / ma48 - 1:+.1%}){vtxt}</span>"
+                f"<b title='台股週K(紅漲綠跌),橘線=MA12 週(季線)、紫線=MA48 週線;下方=每週成交金額(證交所,億元),紅色三角形=期間最大量那一週;滑鼠移到 K 棒(手機點一下)可看每一週的開高低收'>📊 台股週線</b>{today}<span>週收 {last.Close:,.0f}・<b style='color:#e67e22'>MA12 季 {ma12:,.0f}</b>({last.Close / ma12 - 1:+.1%})・<b style='color:#8e44ad'>MA48 週 {ma48:,.0f}</b>({last.Close / ma48 - 1:+.1%}){vtxt}</span>"
                 f"<div class=wkw><svg viewBox='0 0 {W_} {H_}' width='100%' style='display:block'>{out}</svg><div class=wkinfo></div>{js}</div>{vwarn}</div>")
     except Exception as e:
         print("週線圖失敗", e); return ""
